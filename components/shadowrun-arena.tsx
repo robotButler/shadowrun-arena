@@ -13,6 +13,18 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { PlusCircle, Trash2, Edit, Swords, Play, ChevronDown, ChevronUp } from 'lucide-react'
 import { toast, ToastContainer } from 'react-toastify'
 import 'react-toastify/dist/ReactToastify.css'
+import {
+  roll_initiative,
+  resolve_attack,
+  apply_damage,
+  check_combat_end,
+  select_best_weapon,
+  get_ideal_range,
+  Character,
+  Weapon,
+  RoundResult,
+  MatchResult
+} from '../lib/combat'
 
 type Attribute = 'body' | 'agility' | 'reaction' | 'strength' | 'willpower' | 'logic' | 'intuition' | 'charisma'
 type Skill = 'firearms' | 'close combat' | 'running' | 'armor'
@@ -22,43 +34,13 @@ type ActionType = 'Simple' | 'Complex'
 type SimpleAction = 'CallShot' | 'ChangeFireMode' | 'FireRangedWeapon' | 'ReloadWeapon' | 'TakeAim' | 'TakeCover'
 type ComplexAction = 'FireWeapon' | 'MeleeAttack' | 'Sprint'
 
-interface Weapon {
-  name: string
-  damage: string
-  type: 'Melee' | 'Ranged'
-  damageType: 'P' | 'S'
-  ap: number
-  recoilComp: number
-  accuracy: number
-  fireModes: FireMode[]
-  currentFireMode: FireMode
-  ammoCount: number
-  reach: number
-}
-
-interface Character {
-  id: string
-  name: string
-  metatype: Metatype
-  attributes: Record<Attribute, number>
-  skills: Record<Skill, number>
-  weapons: Weapon[]
-  initiativeDice: number
-}
-
-interface CombatResult {
-  winner: string
-  rounds: number
-  details: string
-}
-
 interface CombatCharacter extends Character {
   faction: 'faction1' | 'faction2'
   initiative: number
   position: number
 }
 
-const initialCharacter: Character = {
+const initialCharacter: Omit<Character, 'faction' | 'current_initiative' | 'cumulative_recoil' | 'wound_modifier' | 'situational_modifiers' | 'physical_damage' | 'stun_damage' | 'is_conscious' | 'is_alive' | 'total_damage_dealt' | 'calculate_wound_modifier' | 'check_status'> = {
   id: '',
   name: '',
   metatype: 'Human',
@@ -90,7 +72,7 @@ export function ShadowrunArena() {
   const [editingCharacter, setEditingCharacter] = useState<Character | null>(null)
   const [faction1, setFaction1] = useState<string[]>([])
   const [faction2, setFaction2] = useState<string[]>([])
-  const [combatResults, setCombatResults] = useState<CombatResult[]>([])
+  const [combatResults, setCombatResults] = useState<MatchResult[]>([])
   const [simulations, setSimulations] = useState<number>(100)
   const [newWeapon, setNewWeapon] = useState<Weapon>(initialWeapon)
   const [showWeaponForm, setShowWeaponForm] = useState(false)
@@ -183,18 +165,52 @@ export function ShadowrunArena() {
         ...characters.find(c => c.id === id)!,
         faction: 'faction1' as const,
         initiative: 0,
-        position: 0
+        position: 0,
+        current_initiative: 0,
+        cumulative_recoil: 0,
+        wound_modifier: 0,
+        situational_modifiers: factionModifiers[id] || 0,
+        physical_damage: 0,
+        stun_damage: 0,
+        is_conscious: true,
+        is_alive: true,
+        total_damage_dealt: 0,
+        calculate_wound_modifier: function() {
+          // Implement wound modifier calculation logic here
+        },
+        check_status: function() {
+          // Implement status check logic here
+          return []
+        }
       })),
       ...faction2.map(id => ({
         ...characters.find(c => c.id === id)!,
         faction: 'faction2' as const,
         initiative: 0,
-        position: initialDistance
+        position: initialDistance,
+        current_initiative: 0,
+        cumulative_recoil: 0,
+        wound_modifier: 0,
+        situational_modifiers: factionModifiers[id] || 0,
+        physical_damage: 0,
+        stun_damage: 0,
+        is_conscious: true,
+        is_alive: true,
+        total_damage_dealt: 0,
+        calculate_wound_modifier: function() {
+          // Implement wound modifier calculation logic here
+        },
+        check_status: function() {
+          // Implement status check logic here
+          return []
+        }
       }))
     ]
 
     combatChars.forEach(char => {
-      char.initiative = rollInitiative(char)
+      const { initiative_total } = roll_initiative(char as Character)
+      char.initiative = initiative_total
+      char.current_initiative = initiative_total
     })
 
     combatChars.sort((a, b) => b.initiative - a.initiative)
@@ -206,13 +222,14 @@ export function ShadowrunArena() {
   }
 
   const runSimulations = () => {
-    const results: CombatResult[] = []
+    const results: MatchResult[] = []
     let faction1Wins = 0
     for (let i = 0; i < simulations; i++) {
       const winner = Math.random() < 0.5 ? 'Faction 1' : 'Faction 2'
       const rounds = Math.floor(Math.random() * 10) + 1
+      const roundResults: RoundResult[] = [] // You'd populate this with actual round results
       const details = `Detailed combat log for simulation ${i + 1}: ${winner} victory in ${rounds} rounds.`
-      results.push({ winner, rounds, details })
+      results.push({ winner, rounds, roundResults, details })
       if (winner === 'Faction 1') faction1Wins++
     }
     setCombatResults(results)
@@ -360,12 +377,33 @@ export function ShadowrunArena() {
 
       setActionLog(prev => [...prev, `${currentChar.name} sprinted an extra ${extraDistance} meters!`])
     } else if ((selectedComplexAction === 'FireWeapon' || selectedComplexAction === 'MeleeAttack') && selectedWeapons[0] && selectedTargets[0]) {
-      const weapon = selectedWeapons[0]
+      const weapon = selectedWeapons[0] as Weapon
       const targetId = selectedTargets[0]
       const target = combatCharacters.find(c => c.id === targetId)
       if (target) {
-        // Implement attack logic here
-        setActionLog(prev => [...prev, `${currentChar.name} attacked ${target.name} with ${weapon.name}!`])
+        const distance = Math.abs(currentChar.position - target.position)
+        const result = resolve_attack(currentChar, target, weapon, weapon.currentFireMode, distance)
+        setActionLog(prev => [
+          ...prev,
+          `${currentChar.name} attacked ${target.name} with ${weapon.name}!`,
+          `Attack rolls: ${result.attack_rolls.join(', ')} (${result.attacker_hits} hits)`,
+          `Defense rolls: ${result.defense_rolls.join(', ')} (${result.defender_hits} hits)`,
+          `Damage dealt: ${result.damage_dealt}`,
+          ...result.status_changes
+        ])
+        
+        // Update characters with new damage values
+        const updatedChars = combatCharacters.map(char => 
+          char.id === currentChar.id ? { ...char, ...currentChar } :
+          char.id === target.id ? { ...char, ...target } :
+          char
+        )
+        setCombatCharacters(updatedChars)
+
+        if (check_combat_end(updatedChars)) {
+          setActionLog(prev => [...prev, "Combat has ended!"])
+          // Handle end of combat
+        }
       }
     }
 
@@ -378,15 +416,36 @@ export function ShadowrunArena() {
 
     selectedSimpleActions.forEach((action, index) => {
       if (action === 'FireRangedWeapon' && selectedWeapons[index] && selectedTargets[index]) {
-        const weapon = selectedWeapons[index]!
+        const weapon = selectedWeapons[index] as Weapon
         const targetId = selectedTargets[index]!
         const target = combatCharacters.find(c => c.id === targetId)
         if (target) {
-          // Implement firing logic here
-          setActionLog(prev => [...prev, `${currentChar.name} fired at ${target.name} with ${weapon.name}!`])
+          const distance = Math.abs(currentChar.position - target.position)
+          const result = resolve_attack(currentChar, target, weapon, weapon.currentFireMode, distance)
+          setActionLog(prev => [
+            ...prev,
+            `${currentChar.name} fired at ${target.name} with ${weapon.name}!`,
+            `Attack rolls: ${result.attack_rolls.join(', ')} (${result.attacker_hits} hits)`,
+            `Defense rolls: ${result.defense_rolls.join(', ')} (${result.defender_hits} hits)`,
+            `Damage dealt: ${result.damage_dealt}`,
+            ...result.status_changes
+          ])
+          
+          // Update characters with new damage values
+          const updatedChars = combatCharacters.map(char => 
+            char.id === currentChar.id ? { ...char, ...currentChar } :
+            char.id === target.id ? { ...char, ...target } :
+            char
+          )
+          setCombatCharacters(updatedChars)
+
+          if (check_combat_end(updatedChars)) {
+            setActionLog(prev => [...prev, "Combat has ended!"])
+            // Handle end of combat
+          }
         }
       } else if (action === 'ReloadWeapon' && selectedWeapons[index]) {
-        const weapon = selectedWeapons[index]!
+        const weapon = selectedWeapons[index] as Weapon
         const updatedChars = [...combatCharacters]
         const weaponIndex = updatedChars[currentCharacterIndex].weapons.findIndex(w => w.name === weapon.name)
         if (weaponIndex !== -1) {
@@ -527,8 +586,22 @@ export function ShadowrunArena() {
             </CardContent>
             <CardFooter>
               <Button onClick={() => {
-                setEditingCharacter({...initialCharacter})
-                setShowWeaponForm(false)
+                setEditingCharacter({
+                  ...initialCharacter,
+                  faction: '',
+                  current_initiative: 0,
+                  cumulative_recoil: 0,
+                  wound_modifier: 0,
+                  situational_modifiers: 0,
+                  physical_damage: 0,
+                  stun_damage: 0,
+                  is_conscious: true,
+                  is_alive: true,
+                  total_damage_dealt: 0,
+                  calculate_wound_modifier: () => 0,
+                  check_status: () => ['Conscious'],
+                });
+                setShowWeaponForm(false);
               }}>
                 <PlusCircle className="mr-2 h-4 w-4" /> New Character
               </Button>
