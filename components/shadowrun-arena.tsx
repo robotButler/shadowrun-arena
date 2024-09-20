@@ -1,5 +1,6 @@
 'use client'
 
+import React from 'react';
 import { useState, useEffect } from 'react'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -25,6 +26,7 @@ import {
   RoundResult,
   MatchResult
 } from '../lib/combat'
+import { calculateMaxPhysicalHealth, calculateMaxStunHealth, isCharacterAlive, isCharacterConscious, cn } from '../lib/utils'
 
 type Attribute = 'body' | 'agility' | 'reaction' | 'strength' | 'willpower' | 'logic' | 'intuition' | 'charisma'
 type Skill = 'firearms' | 'close combat' | 'running' | 'armor'
@@ -38,6 +40,8 @@ interface CombatCharacter extends Character {
   faction: 'faction1' | 'faction2'
   initiative: number
   position: number
+  previousPhysicalDamage: number
+  previousStunDamage: number
 }
 
 const initialCharacter: Omit<Character, 'faction' | 'current_initiative' | 'cumulative_recoil' | 'wound_modifier' | 'situational_modifiers' | 'physical_damage' | 'stun_damage' | 'is_conscious' | 'is_alive' | 'total_damage_dealt' | 'calculate_wound_modifier' | 'check_status'> = {
@@ -67,6 +71,105 @@ const initialWeapon: Weapon = {
   reach: 1
 }
 
+const ActionLogEntry = ({ summary, details }: { summary: string, details: string[] }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  const highlightRoll = (roll: string) => {
+    const numValue = parseInt(roll.trim());
+    if (numValue >= 5) {
+      return <span className="bg-green-200">{roll}</span>;
+    } else if (numValue === 1) {
+      return <span className="bg-red-200">{roll}</span>;
+    }
+    return roll;
+  };
+
+  const processDetail = (detail: string) => {
+    if (detail.includes('rolls:')) {
+      const [prefix, rollsAndSummary] = detail.split('rolls:');
+      const [rolls, summary] = rollsAndSummary.split('(');
+      const highlightedRolls = rolls.split(',').map((roll, index) => (
+        <React.Fragment key={index}>
+          {highlightRoll(roll.trim())}
+          {index < rolls.split(',').length - 1 ? ',' : ''}
+          {' '}
+        </React.Fragment>
+      ));
+      return (
+        <>
+          {prefix}rolls: {highlightedRolls}({summary}
+        </>
+      );
+    }
+    return detail;
+  };
+
+  return (
+    <div className="mb-2">
+      <div className="flex items-center">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="mr-2"
+        >
+          {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+        </Button>
+        <span>{summary}</span>
+      </div>
+      {isExpanded && (
+        <div className="mt-2 pl-6 text-sm text-muted-foreground">
+          {details.map((detail, index) => (
+            <p key={index}>{processDetail(detail)}</p>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const SimulationResult = ({ result, index }: { result: MatchResult, index: number }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [expandedRound, setExpandedRound] = useState<number | null>(null);
+
+  return (
+    <div className="mb-4">
+      <Button
+        variant="ghost"
+        className="w-full justify-between"
+        onClick={() => setIsExpanded(!isExpanded)}
+      >
+        <span>Simulation {index + 1}: {result.winner} won in {result.rounds} rounds</span>
+        {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+      </Button>
+      {isExpanded && (
+        <div className="mt-2 pl-4">
+          {result.roundResults.map((round, roundIndex) => (
+            <div key={roundIndex} className="mb-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full justify-between"
+                onClick={() => setExpandedRound(expandedRound === roundIndex ? null : roundIndex)}
+              >
+                <span>Round {roundIndex + 1} - {round.actingCharacter} (Initiative Phase: {round.initiativePhase})</span>
+                {expandedRound === roundIndex ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+              </Button>
+              {expandedRound === roundIndex && (
+                <div className="mt-1 pl-4 text-sm">
+                  {round.messages.map((message, messageIndex) => (
+                    <p key={messageIndex}>{message}</p>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 export function ShadowrunArena() {
   const [characters, setCharacters] = useState<Character[]>([])
   const [editingCharacter, setEditingCharacter] = useState<Character | null>(null)
@@ -88,9 +191,13 @@ export function ShadowrunArena() {
   const [selectedTargets, setSelectedTargets] = useState<(string | null)[]>([null, null])
   const [movementDistance, setMovementDistance] = useState(0)
   const [movementDirection, setMovementDirection] = useState<'Toward' | 'Away'>('Toward')
-  const [actionLog, setActionLog] = useState<string[]>([])
+  const [actionLog, setActionLog] = useState<{ summary: string, details: string[] }[]>([])
   const [initialDistance, setInitialDistance] = useState(10)
   const [selectedFreeAction, setSelectedFreeAction] = useState<'CallShot' | 'ChangeFireMode' | null>(null)
+  const [roundNumber, setRoundNumber] = useState(1)
+  const [initialInitiatives, setInitialInitiatives] = useState<Record<string, number>>({});
+  const [isCombatActive, setIsCombatActive] = useState(false);
+  const [simulationInitialDistance, setSimulationInitialDistance] = useState(10)
 
   // Load characters from localStorage only once when the component mounts
   useEffect(() => {
@@ -167,7 +274,7 @@ export function ShadowrunArena() {
     return character.attributes.reaction + character.attributes.intuition + initiativeRoll.reduce((a, b) => a + b, 0)
   }
 
-  const simulateCombat = () => {
+  const startNewCombat = () => {
     const combatChars: CombatCharacter[] = [
       ...faction1.map(id => ({
         ...characters.find(c => c.id === id)!,
@@ -183,11 +290,13 @@ export function ShadowrunArena() {
         is_conscious: true,
         is_alive: true,
         total_damage_dealt: 0,
+        previousPhysicalDamage: 0,
+        previousStunDamage: 0,
         calculate_wound_modifier: function() {
           // Implement wound modifier calculation logic here
         },
         check_status: function() {
-          // Implement status check logic here
+          // This function is now handled by checkAndUpdateCharacterStatus
           return []
         }
       })),
@@ -195,7 +304,7 @@ export function ShadowrunArena() {
         ...characters.find(c => c.id === id)!,
         faction: 'faction2' as const,
         initiative: 0,
-        position: initialDistance,
+        position: simulationInitialDistance,
         current_initiative: 0,
         cumulative_recoil: 0,
         wound_modifier: 0,
@@ -205,42 +314,240 @@ export function ShadowrunArena() {
         is_conscious: true,
         is_alive: true,
         total_damage_dealt: 0,
+        previousPhysicalDamage: 0,
+        previousStunDamage: 0,
         calculate_wound_modifier: function() {
           // Implement wound modifier calculation logic here
         },
         check_status: function() {
-          // Implement status check logic here
+          // This function is now handled by checkAndUpdateCharacterStatus
           return []
         }
       }))
     ]
 
+    const initialInitiativeRolls: Record<string, number> = {};
+    const initiativeLog: string[] = ["Initial Initiative Rolls:"];
+
     combatChars.forEach(char => {
-      const { initiative_total } = roll_initiative(char as Character)
+      const { initiative_total, initiative_rolls } = roll_initiative(char as Character)
       char.initiative = initiative_total
       char.current_initiative = initiative_total
+      initialInitiativeRolls[char.id] = initiative_total
+
+      initiativeLog.push(`${char.name}: ${initiative_total} (Dice: ${initiative_rolls.join(', ')})`)
     })
 
     combatChars.sort((a, b) => b.initiative - a.initiative)
     setCombatCharacters(combatChars)
-    setCurrentInitiativePhase(1)
+    setInitialInitiatives(initialInitiativeRolls)
+    setCurrentInitiativePhase(combatChars[0].initiative)
     setCurrentCharacterIndex(0)
-    setActionLog([])
+    setActionLog([{ summary: "Combat Started", details: initiativeLog }])
     clearInputs()
+    setRoundNumber(1)
+    setIsCombatActive(true)
+  }
+
+  const endCombat = () => {
+    setIsCombatActive(false)
+    toast.info("Combat has ended!")
+  }
+
+  const updateInitiative = () => {
+    let highestInitiative = -1;
+    let nextCharacterIndex = -1;
+
+    const updatedChars = combatCharacters.map((char, index) => {
+      if (index === currentCharacterIndex) {
+        char.current_initiative -= 10;
+      }
+      if (char.current_initiative > highestInitiative && char.is_conscious) {
+        highestInitiative = char.current_initiative;
+        nextCharacterIndex = index;
+      }
+      return char;
+    });
+
+    if (highestInitiative < 1) {
+      // Reset all initiatives to their initial values
+      updatedChars.forEach(char => {
+        char.current_initiative = initialInitiatives[char.id];
+      });
+      highestInitiative = Math.max(...updatedChars.map(char => char.current_initiative));
+      nextCharacterIndex = updatedChars.findIndex(char => char.current_initiative === highestInitiative && char.is_conscious);
+      
+      // Log the initiative reset
+      setActionLog(prev => [...prev, { 
+        summary: "Initiative Reset", 
+        details: ["All characters' initiatives have been reset to their initial values."]
+      }]);
+    }
+
+    setCombatCharacters(updatedChars);
+    setCurrentInitiativePhase(highestInitiative);
+    setCurrentCharacterIndex(nextCharacterIndex);
+  }
+
+  const nextCharacter = () => {
+    const combatEnded = displayRoundSummary();
+    if (combatEnded) {
+      endCombat();
+      return;
+    }
+
+    updateInitiative();
   }
 
   const runSimulations = () => {
     const results: MatchResult[] = []
-    let faction1Wins = 0
+
     for (let i = 0; i < simulations; i++) {
-      const winner = Math.random() < 0.5 ? 'Faction 1' : 'Faction 2'
-      const rounds = Math.floor(Math.random() * 10) + 1
-      const roundResults: RoundResult[] = [] // You'd populate this with actual round results
-      const details = `Detailed combat log for simulation ${i + 1}: ${winner} victory in ${rounds} rounds.`
-      results.push({ winner, rounds, roundResults, details })
-      if (winner === 'Faction 1') faction1Wins++
+      const simulationResult = runSingleSimulation()
+      results.push(simulationResult)
     }
+
     setCombatResults(results)
+  }
+
+  const runSingleSimulation = (): MatchResult => {
+    const combatChars: CombatCharacter[] = [
+      ...faction1.map(id => createCombatCharacter(characters.find(c => c.id === id)!, 'faction1', 0)),
+      ...faction2.map(id => createCombatCharacter(characters.find(c => c.id === id)!, 'faction2', simulationInitialDistance))
+    ]
+
+    let roundResults: RoundResult[] = []
+    let round = 1
+    let combatEnded = false
+
+    while (!combatEnded && round <= 20) {
+      const roundResult = simulateRound(combatChars)
+      roundResults.push(roundResult)
+
+      combatEnded = check_combat_end(combatChars)
+      if (combatEnded) break
+
+      round++
+    }
+
+    const winner = determineWinner(combatChars)
+    const details = `Combat ended after ${round} rounds. ${winner} wins.`
+
+    return {
+      winner,
+      rounds: round,
+      roundResults,
+      details
+    }
+  }
+
+  const createCombatCharacter = (character: Character, faction: 'faction1' | 'faction2', position: number): CombatCharacter => {
+    const { initiative_total } = roll_initiative(character)
+    return {
+      ...character,
+      faction,
+      initiative: initiative_total,
+      current_initiative: initiative_total,
+      position,
+      cumulative_recoil: 0,
+      wound_modifier: 0,
+      situational_modifiers: factionModifiers[character.id] || 0,
+      physical_damage: 0,
+      stun_damage: 0,
+      is_conscious: true,
+      is_alive: true,
+      total_damage_dealt: 0,
+      previousPhysicalDamage: 0,
+      previousStunDamage: 0,
+      calculate_wound_modifier: function() {
+        // Implement wound modifier calculation logic here
+      },
+      check_status: function() {
+        return []
+      }
+    }
+  }
+
+  const simulateRound = (characters: CombatCharacter[]): RoundResult => {
+    const roundResult: RoundResult = {
+      actingCharacter: '',
+      initiativePhase: 0,
+      attacker_hits: 0,
+      defender_hits: 0,
+      damage_dealt: 0,
+      attack_rolls: [],
+      defense_rolls: [],
+      resistance_rolls: [],
+      status_changes: [],
+      messages: [],
+      glitch: false,
+      criticalGlitch: false
+    }
+
+    characters.sort((a, b) => b.current_initiative - a.current_initiative)
+
+    // Check if we need to reset initiatives
+    if (characters[0].current_initiative < 1) {
+      characters.forEach(char => {
+        char.current_initiative = char.initiative;
+      });
+      roundResult.messages.push("Initiative reset: All characters' initiatives have been reset to their initial values.");
+    }
+
+    for (const character of characters) {
+      if (!character.is_conscious) continue
+
+      roundResult.actingCharacter = character.name
+      roundResult.initiativePhase = character.current_initiative
+
+      const target = selectTarget(character, characters)
+      if (!target) continue
+
+      const weapon = select_best_weapon(character, Math.abs(character.position - target.position))
+      const attackResult = resolve_attack(character, target, weapon, weapon.currentFireMode, Math.abs(character.position - target.position))
+
+      roundResult.messages.push(...attackResult.messages)
+      roundResult.damage_dealt += attackResult.damage_dealt
+
+      // Update character statuses
+      updateCharacterStatus(character)
+      updateCharacterStatus(target)
+
+      // Move character towards ideal range
+      const idealRange = get_ideal_range(weapon.type)
+      const currentDistance = Math.abs(character.position - target.position)
+      const moveDistance = Math.min(character.attributes.agility * 2, Math.abs(currentDistance - idealRange))
+      character.position += currentDistance > idealRange ? moveDistance : -moveDistance
+
+      // Reduce initiative
+      character.current_initiative -= 10
+
+      // We break after the first character's action to simulate one character's turn per round
+      break
+    }
+
+    return roundResult
+  }
+
+  const selectTarget = (attacker: CombatCharacter, characters: CombatCharacter[]): CombatCharacter | null => {
+    return characters.find(c => c.faction !== attacker.faction && c.is_conscious) || null
+  }
+
+  const updateCharacterStatus = (character: CombatCharacter) => {
+    const maxPhysicalHealth = calculateMaxPhysicalHealth(character.attributes.body)
+    const maxStunHealth = calculateMaxStunHealth(character.attributes.willpower)
+
+    character.is_alive = isCharacterAlive(character.physical_damage, maxPhysicalHealth)
+    character.is_conscious = isCharacterConscious(character.stun_damage, maxStunHealth, character.physical_damage, maxPhysicalHealth)
+  }
+
+  const determineWinner = (characters: CombatCharacter[]): string => {
+    const faction1Alive = characters.some(c => c.faction === 'faction1' && c.is_conscious)
+    const faction2Alive = characters.some(c => c.faction === 'faction2' && c.is_conscious)
+
+    if (faction1Alive && !faction2Alive) return 'Faction 1'
+    if (!faction1Alive && faction2Alive) return 'Faction 2'
+    return 'Draw'
   }
 
   const addWeapon = () => {
@@ -294,57 +601,92 @@ export function ShadowrunArena() {
     )
   }
 
+  const setDefaultWeaponAndTarget = () => {
+    if (combatCharacters.length > 0) {
+      const currentChar = combatCharacters[currentCharacterIndex];
+      const defaultWeapon = currentChar.weapons[0] || null;
+      const defaultTarget = combatCharacters.find(c => c.faction !== currentChar.faction && c.is_conscious)?.id || null;
+      
+      setSelectedWeapons([defaultWeapon, null]);
+      setSelectedTargets([defaultTarget, null]);
+    }
+  };
+
   const handleActionTypeSelection = (actionType: ActionType) => {
-    setSelectedActionType(actionType === selectedActionType ? null : actionType)
-    setSelectedSimpleActions([])
-    setSelectedComplexAction(null)
-    setSelectedWeapons([null, null])
-    setSelectedTargets([null, null])
-  }
+    setSelectedActionType(actionType === selectedActionType ? null : actionType);
+    setSelectedSimpleActions([]);
+    setSelectedComplexAction(null);
+    if (actionType) {
+      setDefaultWeaponAndTarget();
+    } else {
+      setSelectedWeapons([null, null]);
+      setSelectedTargets([null, null]);
+    }
+  };
 
   const handleSimpleActionSelection = (action: SimpleAction, index: number) => {
     setSelectedSimpleActions(prev => {
-      const newActions = [...prev]
-      newActions[index] = action
-      return newActions
-    })
-    if (action === 'FireRangedWeapon' || action === 'ReloadWeapon' || action === 'ChangeFireMode') {
-      setSelectedWeapons(prev => {
-        const newWeapons = [...prev]
-        newWeapons[index] = null
-        return newWeapons
-      })
-      setSelectedTargets(prev => {
-        const newTargets = [...prev]
-        newTargets[index] = null
-        return newTargets
-      })
+      const newActions = [...prev];
+      newActions[index] = action;
+      return newActions;
+    });
+
+    const currentChar = combatCharacters[currentCharacterIndex];
+    let defaultWeapon = null;
+    let defaultTarget = null;
+
+    if (action === 'FireRangedWeapon') {
+      defaultWeapon = currentChar.weapons.find(w => w.type === 'Ranged') || null;
+      defaultTarget = combatCharacters.find(c => c.faction !== currentChar.faction && c.is_conscious)?.id || null;
+    } else if (action === 'ReloadWeapon' || action === 'ChangeFireMode') {
+      defaultWeapon = currentChar.weapons.find(w => w.type === 'Ranged') || null;
     }
-  }
+
+    setSelectedWeapons(prev => {
+      const newWeapons = [...prev];
+      newWeapons[index] = defaultWeapon;
+      return newWeapons;
+    });
+    setSelectedTargets(prev => {
+      const newTargets = [...prev];
+      newTargets[index] = defaultTarget;
+      return newTargets;
+    });
+  };
 
   const handleComplexActionSelection = (action: ComplexAction) => {
-    setSelectedComplexAction(action)
-    if (action === 'FireWeapon' || action === 'MeleeAttack') {
-      setSelectedWeapons([null])
-      setSelectedTargets([null])
+    setSelectedComplexAction(action);
+    const currentChar = combatCharacters[currentCharacterIndex];
+    let defaultWeapon = null;
+    let defaultTarget = null;
+
+    if (action === 'FireWeapon') {
+      defaultWeapon = currentChar.weapons.find(w => w.type === 'Ranged') || null;
+      defaultTarget = combatCharacters.find(c => c.faction !== currentChar.faction && c.is_conscious)?.id || null;
+    } else if (action === 'MeleeAttack') {
+      defaultWeapon = currentChar.weapons.find(w => w.type === 'Melee') || null;
+      defaultTarget = combatCharacters.find(c => c.faction !== currentChar.faction && c.is_conscious)?.id || null;
     }
-  }
+
+    setSelectedWeapons([defaultWeapon]);
+    setSelectedTargets([defaultTarget]);
+  };
 
   const handleWeaponSelection = (weapon: Weapon, index: number) => {
     setSelectedWeapons(prev => {
-      const newWeapons = [...prev]
-      newWeapons[index] = weapon
-      return newWeapons
-    })
-  }
+      const newWeapons = [...prev];
+      newWeapons[index] = weapon;
+      return newWeapons;
+    });
+  };
 
   const handleTargetSelection = (targetId: string, index: number) => {
     setSelectedTargets(prev => {
-      const newTargets = [...prev]
-      newTargets[index] = targetId
-      return newTargets
-    })
-  }
+      const newTargets = [...prev];
+      newTargets[index] = targetId;
+      return newTargets;
+    });
+  };
 
   const handleMovement = () => {
     if (movementDistance === 0) {
@@ -364,7 +706,7 @@ export function ShadowrunArena() {
     updatedChars[currentCharacterIndex].position += movementDirection === 'Toward' ? movementDistance : -movementDistance
     setCombatCharacters(updatedChars)
 
-    setActionLog(prev => [...prev, `${currentChar.name} moved ${movementDistance} meters ${movementDirection.toLowerCase()} the opposing faction.`])
+    setActionLog(prev => [...prev, { summary: `${currentChar.name} moved ${movementDistance} meters ${movementDirection.toLowerCase()} the opposing faction.`, details: [] }])
     clearInputs()
     nextCharacter()
   }
@@ -383,7 +725,8 @@ export function ShadowrunArena() {
       updatedChars[currentCharacterIndex].position += extraDistance
       setCombatCharacters(updatedChars)
 
-      setActionLog(prev => [...prev, `${currentChar.name} sprinted an extra ${extraDistance} meters!`])
+      const summary = `${currentChar.name} sprinted an extra ${extraDistance} meters!`
+      setActionLog(prev => [...prev, { summary, details: [] }])
     } else if ((selectedComplexAction === 'FireWeapon' || selectedComplexAction === 'MeleeAttack') && selectedWeapons[0] && selectedTargets[0]) {
       const weapon = selectedWeapons[0] as Weapon
       const targetId = selectedTargets[0]
@@ -391,14 +734,19 @@ export function ShadowrunArena() {
       if (target) {
         const distance = Math.abs(currentChar.position - target.position)
         const result = resolve_attack(currentChar, target, weapon, weapon.currentFireMode, distance)
-        setActionLog(prev => [
-          ...prev,
-          `${currentChar.name} attacked ${target.name} with ${weapon.name}!`,
-          `Attack rolls: ${result.attack_rolls.join(', ')} (${result.attacker_hits} hits)`,
-          `Defense rolls: ${result.defense_rolls.join(', ')} (${result.defender_hits} hits)`,
-          `Damage dealt: ${result.damage_dealt}`,
-          ...result.status_changes
-        ])
+        
+        let summary = `${currentChar.name} attacked ${target.name} with ${weapon.name}`
+        if (result.criticalGlitch) {
+          summary += ` and suffered a critical glitch!`
+        } else if (result.glitch) {
+          summary += ` but glitched!`
+        } else if (result.damage_dealt > 0) {
+          summary += ` and dealt ${result.damage_dealt} damage.`
+        } else {
+          summary += ` but missed.`
+        }
+        
+        setActionLog(prev => [...prev, { summary, details: result.messages }])
         
         // Update characters with new damage values
         const updatedChars = combatCharacters.map(char => 
@@ -409,7 +757,7 @@ export function ShadowrunArena() {
         setCombatCharacters(updatedChars)
 
         if (check_combat_end(updatedChars)) {
-          setActionLog(prev => [...prev, "Combat has ended!"])
+          setActionLog(prev => [...prev, { summary: "Combat has ended!", details: [] }])
           // Handle end of combat
         }
       }
@@ -430,14 +778,8 @@ export function ShadowrunArena() {
         if (target) {
           const distance = Math.abs(currentChar.position - target.position)
           const result = resolve_attack(currentChar, target, weapon, weapon.currentFireMode, distance)
-          setActionLog(prev => [
-            ...prev,
-            `${currentChar.name} fired at ${target.name} with ${weapon.name}!`,
-            `Attack rolls: ${result.attack_rolls.join(', ')} (${result.attacker_hits} hits)`,
-            `Defense rolls: ${result.defense_rolls.join(', ')} (${result.defender_hits} hits)`,
-            `Damage dealt: ${result.damage_dealt}`,
-            ...result.status_changes
-          ])
+          const summary = `${currentChar.name} fired at ${target.name} with ${weapon.name} and dealt ${result.damage_dealt} damage.`
+          setActionLog(prev => [...prev, { summary, details: result.messages }])
           
           // Update characters with new damage values
           const updatedChars = combatCharacters.map(char => 
@@ -448,7 +790,7 @@ export function ShadowrunArena() {
           setCombatCharacters(updatedChars)
 
           if (check_combat_end(updatedChars)) {
-            setActionLog(prev => [...prev, "Combat has ended!"])
+            setActionLog(prev => [...prev, { summary: "Combat has ended!", details: [] }])
             // Handle end of combat
           }
         }
@@ -459,16 +801,21 @@ export function ShadowrunArena() {
         if (weaponIndex !== -1) {
           updatedChars[currentCharacterIndex].weapons[weaponIndex].ammoCount = weapon.ammoCount
           setCombatCharacters(updatedChars)
-          setActionLog(prev => [...prev, `${currentChar.name} reloaded their ${weapon.name}!`])
+          const summary = `${currentChar.name} reloaded their ${weapon.name}.`
+          setActionLog(prev => [...prev, { summary, details: [] }])
         }
       } else if (action === 'TakeAim') {
-        setActionLog(prev => [...prev, `${currentChar.name} took aim!`])
+        const summary = `${currentChar.name} took aim.`
+        setActionLog(prev => [...prev, { summary, details: [] }])
       } else if (action === 'TakeCover') {
-        setActionLog(prev => [...prev, `${currentChar.name} took cover!`])
+        const summary = `${currentChar.name} took cover.`
+        setActionLog(prev => [...prev, { summary, details: [] }])
       } else if (action === 'CallShot') {
-        setActionLog(prev => [...prev, `${currentChar.name} called a shot!`])
+        const summary = `${currentChar.name} called a shot.`
+        setActionLog(prev => [...prev, { summary, details: [] }])
       } else if (action === 'ChangeFireMode') {
-        setActionLog(prev => [...prev, `${currentChar.name} changed fire mode!`])
+        const summary = `${currentChar.name} changed fire mode.`
+        setActionLog(prev => [...prev, { summary, details: [] }])
       }
     })
 
@@ -484,16 +831,76 @@ export function ShadowrunArena() {
     const updatedChars = [...combatCharacters]
     updatedChars[currentCharacterIndex].weapons[weaponIndex].currentFireMode = newFireMode
     setCombatCharacters(updatedChars)
-    setActionLog(prev => [...prev, `${combatCharacters[currentCharacterIndex].name} changed fire mode of ${updatedChars[currentCharacterIndex].weapons[weaponIndex].name} to ${newFireMode}`])
+    setActionLog(prev => [...prev, { summary: `${combatCharacters[currentCharacterIndex].name} changed fire mode of ${updatedChars[currentCharacterIndex].weapons[weaponIndex].name} to ${newFireMode}`, details: [] }])
   }
 
-  const nextCharacter = () => {
-    if (currentCharacterIndex < combatCharacters.length - 1) {
-      setCurrentCharacterIndex(currentCharacterIndex + 1)
-    } else {
-      setCurrentInitiativePhase(currentInitiativePhase + 1)
-      setCurrentCharacterIndex(0)
+  const checkAndUpdateCharacterStatus = (character: CombatCharacter): string[] => {
+    const statusChanges: string[] = []
+    const physicalDamageChange = character.physical_damage - character.previousPhysicalDamage
+    const stunDamageChange = character.stun_damage - character.previousStunDamage
+
+    if (physicalDamageChange > 0) {
+      statusChanges.push(`${character.name} took ${physicalDamageChange} physical damage.`)
     }
+    if (stunDamageChange > 0) {
+      statusChanges.push(`${character.name} took ${stunDamageChange} stun damage.`)
+    }
+
+    const maxPhysicalHealth = calculateMaxPhysicalHealth(character.attributes.body)
+    const maxStunHealth = calculateMaxStunHealth(character.attributes.willpower)
+
+    const wasAlive = character.is_alive
+    const wasConscious = character.is_conscious
+
+    character.is_alive = isCharacterAlive(character.physical_damage, maxPhysicalHealth)
+    character.is_conscious = isCharacterConscious(character.stun_damage, maxStunHealth, character.physical_damage, maxPhysicalHealth)
+
+    if (wasAlive && !character.is_alive) {
+      statusChanges.push(`${character.name} has died!`)
+    } else if (wasConscious && !character.is_conscious) {
+      statusChanges.push(`${character.name} has been knocked unconscious!`)
+    }
+
+    character.previousPhysicalDamage = character.physical_damage
+    character.previousStunDamage = character.stun_damage
+
+    return statusChanges
+  }
+
+  const displayRoundSummary = () => {
+    const roundSummary: string[] = [`End of Round ${roundNumber}`]
+    let combatEnded = false
+
+    const updatedChars = combatCharacters.map(char => {
+      const statusChanges = checkAndUpdateCharacterStatus(char)
+      return { ...char, statusChanges }
+    })
+
+    updatedChars.forEach(char => {
+      if (char.statusChanges.length > 0) {
+        roundSummary.push(...char.statusChanges)
+      }
+    })
+
+    const faction1Conscious = updatedChars.some(char => char.faction === 'faction1' && char.is_conscious)
+    const faction2Conscious = updatedChars.some(char => char.faction === 'faction2' && char.is_conscious)
+
+    if (!faction1Conscious && !faction2Conscious) {
+      roundSummary.push("Both factions are incapacitated. The combat ends in a draw.")
+      combatEnded = true
+    } else if (!faction1Conscious) {
+      roundSummary.push("Faction 2 wins! All members of Faction 1 are incapacitated.")
+      combatEnded = true
+    } else if (!faction2Conscious) {
+      roundSummary.push("Faction 1 wins! All members of Faction 2 are incapacitated.")
+      combatEnded = true
+    }
+
+    setActionLog(prev => [...prev, { summary: `Round ${roundNumber} Summary`, details: roundSummary }])
+    setCombatCharacters(updatedChars)
+    setRoundNumber(roundNumber + 1)
+
+    return combatEnded
   }
 
   const clearInputs = () => {
@@ -556,10 +963,21 @@ export function ShadowrunArena() {
     <div className="container mx-auto p-4">
       <h1 className="text-3xl font-bold text-center mb-6">Shadowrun 5e Arena</h1>
       <Tabs defaultValue="characters">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="characters">Characters</TabsTrigger>
-          <TabsTrigger value="combat">Combat</TabsTrigger>
-          <TabsTrigger value="simulations">Simulations</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-3 mb-4">
+          {["characters", "combat", "simulations"].map((tab) => (
+            <TabsTrigger
+              key={tab}
+              value={tab}
+              className={cn(
+                "py-2 px-4 text-sm font-medium transition-all",
+                "data-[state=active]:bg-primary data-[state=active]:text-primary-foreground",
+                "data-[state=active]:shadow-md",
+                "hover:bg-muted"
+              )}
+            >
+              {tab.charAt(0).toUpperCase() + tab.slice(1)}
+            </TabsTrigger>
+          ))}
         </TabsList>
         <TabsContent value="characters">
           <Card>
@@ -896,12 +1314,12 @@ export function ShadowrunArena() {
               </div>
             </CardContent>
             <CardFooter>
-              <Button onClick={simulateCombat} disabled={faction1.length === 0 || faction2.length === 0}>
-                <Swords className="mr-2 h-4 w-4" /> Simulate Combat
+              <Button onClick={startNewCombat} disabled={faction1.length === 0 || faction2.length === 0 || isCombatActive}>
+                <Swords className="mr-2 h-4 w-4" /> New Combat
               </Button>
             </CardFooter>
           </Card>
-          {combatCharacters.length > 0 && (
+          {isCombatActive && combatCharacters.length > 0 && (
             <Card className="mt-4">
               <CardHeader>
                 <CardTitle>Combat Simulation</CardTitle>
@@ -913,6 +1331,19 @@ export function ShadowrunArena() {
                     <h3 className="font-semibold">Current Character: {combatCharacters[currentCharacterIndex].name}</h3>
                     <p>Faction: {combatCharacters[currentCharacterIndex].faction}</p>
                     <p>Position: {combatCharacters[currentCharacterIndex].position} meters</p>
+                    <p>Current Initiative: {combatCharacters[currentCharacterIndex].current_initiative}</p>
+                    {(() => {
+                      const currentChar = combatCharacters[currentCharacterIndex];
+                      const maxPhysical = calculateMaxPhysicalHealth(currentChar.attributes.body);
+                      const maxStun = calculateMaxStunHealth(currentChar.attributes.willpower);
+                      return (
+                        <>
+                          <p>Physical Damage: {currentChar.physical_damage} / {maxPhysical}</p>
+                          <p>Stun Damage: {currentChar.stun_damage} / {maxStun}</p>
+                          <p>Status: {currentChar.is_alive ? (currentChar.is_conscious ? 'Conscious' : 'Unconscious') : 'Dead'}</p>
+                        </>
+                      );
+                    })()}
                   </div>
                   <div>
                     <h4 className="font-semibold">Action Type</h4>
@@ -982,7 +1413,7 @@ export function ShadowrunArena() {
                               </SelectTrigger>
                               <SelectContent>
                                 {combatCharacters
-                                  .filter(c => c.faction !== combatCharacters[currentCharacterIndex].faction)
+                                  .filter(c => c.faction !== combatCharacters[currentCharacterIndex].faction && c.is_conscious)
                                   .map((target) => (
                                     <SelectItem key={target.id} value={target.id}>{target.name}</SelectItem>
                                   ))
@@ -1043,7 +1474,7 @@ export function ShadowrunArena() {
                             </SelectTrigger>
                             <SelectContent>
                               {combatCharacters
-                                .filter(c => c.faction !== combatCharacters[currentCharacterIndex].faction)
+                                .filter(c => c.faction !== combatCharacters[currentCharacterIndex].faction && c.is_conscious)
                                 .map((target) => (
                                   <SelectItem key={target.id} value={target.id}>{target.name}</SelectItem>
                                 ))
@@ -1127,7 +1558,7 @@ export function ShadowrunArena() {
                       handleMovement()
                     } else if (selectedFreeAction) {
                       // Handle free action here
-                      setActionLog(prev => [...prev, `${combatCharacters[currentCharacterIndex].name} performed a ${selectedFreeAction} action.`])
+                      setActionLog(prev => [...prev, { summary: `${combatCharacters[currentCharacterIndex].name} performed a ${selectedFreeAction} action.`, details: [] }])
                       clearInputs()
                       nextCharacter()
                     } else {
@@ -1146,9 +1577,9 @@ export function ShadowrunArena() {
                 <CardTitle>Action Log</CardTitle>
               </CardHeader>
               <CardContent>
-                <ScrollArea className="h-[200px] w-full rounded-md border p-4">
+                <ScrollArea className="h-[600px] w-full rounded-md border p-4">
                   {actionLog.map((log, index) => (
-                    <p key={index} className="mb-2">{log}</p>
+                    <ActionLogEntry key={index} summary={log.summary} details={log.details} />
                   ))}
                 </ScrollArea>
               </CardContent>
@@ -1165,6 +1596,16 @@ export function ShadowrunArena() {
               <div className="grid grid-cols-2 gap-4 mb-4">
                 <FactionSelector faction="faction1" />
                 <FactionSelector faction="faction2" />
+              </div>
+              <div className="flex items-center space-x-2 mb-4">
+                <Label htmlFor="simulationInitialDistance">Initial Distance (meters):</Label>
+                <Input
+                  id="simulationInitialDistance"
+                  type="number"
+                  value={simulationInitialDistance}
+                  onChange={(e) => setSimulationInitialDistance(parseInt(e.target.value))}
+                  className="w-20"
+                />
               </div>
               <div className="flex items-center space-x-2">
                 <Label htmlFor="simulations">Number of Simulations:</Label>
@@ -1193,21 +1634,7 @@ export function ShadowrunArena() {
                 <p>Total Simulations: {combatResults.length}</p>
                 <ScrollArea className="h-[300px] w-full mt-4">
                   {combatResults.map((result, index) => (
-                    <div key={index} className="mb-2">
-                      <Button
-                        variant="ghost"
-                        className="w-full justify-between"
-                        onClick={() => toggleSimulationDetails(index)}
-                      >
-                        <span>Simulation {index + 1}: {result.winner} won in {result.rounds} rounds</span>
-                        {expandedSimulations.includes(index) ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                      </Button>
-                      {expandedSimulations.includes(index) && (
-                        <div className="mt-2 p-2 bg-muted rounded-md">
-                          <p>{result.details}</p>
-                        </div>
-                      )}
-                    </div>
+                    <SimulationResult key={index} result={result} index={index} />
                   ))}
                 </ScrollArea>
               </CardContent>
