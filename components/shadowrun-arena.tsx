@@ -92,16 +92,21 @@ export function ShadowrunArena() {
   const [initialDistance, setInitialDistance] = useState(10)
   const [selectedFreeAction, setSelectedFreeAction] = useState<'CallShot' | 'ChangeFireMode' | null>(null)
 
+  // Load characters from localStorage only once when the component mounts
   useEffect(() => {
     const storedCharacters = localStorage.getItem('shadowrunCharacters')
     if (storedCharacters) {
       setCharacters(JSON.parse(storedCharacters))
     }
-  }, [])
+  }, []) // Empty dependency array means this effect runs only once on mount
 
+  // Save characters to localStorage whenever the characters state changes
   useEffect(() => {
-    localStorage.setItem('shadowrunCharacters', JSON.stringify(characters))
-  }, [characters])
+    // Only save if characters is not empty
+    if (characters.length > 0) {
+      localStorage.setItem('shadowrunCharacters', JSON.stringify(characters))
+    }
+  }, [characters]) // This effect runs whenever characters state changes
 
   const saveCharacter = (character: Character) => {
     if (!character.name.trim()) {
@@ -109,12 +114,15 @@ export function ShadowrunArena() {
       return
     }
 
-    if (character.id) {
-      setCharacters(characters.map(c => c.id === character.id ? character : c))
-    } else {
-      const newCharacter = { ...character, id: Date.now().toString() }
-      setCharacters([...characters, newCharacter])
-    }
+    setCharacters(prevCharacters => {
+      if (character.id) {
+        return prevCharacters.map(c => c.id === character.id ? character : c)
+      } else {
+        const newCharacter = { ...character, id: Date.now().toString() }
+        return [...prevCharacters, newCharacter]
+      }
+    })
+
     setEditingCharacter(null)
     setShowWeaponForm(false)
     toast.success('Character saved successfully')
