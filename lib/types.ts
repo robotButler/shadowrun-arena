@@ -89,6 +89,12 @@ export interface SimulationResultProps {
 
 export interface FactionSelectorProps {
   faction: 'faction1' | 'faction2'
+  characters: Character[]
+  factionMembers: string[]
+  factionModifiers: Record<string, number>
+  onAddToFaction: (characterId: string, faction: 'faction1' | 'faction2') => void
+  onRemoveFromFaction: (characterId: string, faction: 'faction1' | 'faction2') => void
+  onModifierChange: (characterId: string, value: number) => void
 }
 
 // Add any other types or interfaces you need here
