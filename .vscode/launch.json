@@ -9,27 +9,19 @@
         },
         {
             "name": "Next.js: debug client-side",
-
             "type": "chrome",
             "request": "launch",
-            "runtimeExecutable": "google-chrome",
             "url": "http://localhost:3000"
         },
         {
             "name": "Next.js: debug full stack",
             "type": "node-terminal",
             "request": "launch",
-            "resolveSourceMapLocations": [
-                "${workspaceFolder}/**",
-                "!**/node_modules/**"
-            ],
             "command": "npm run dev",
-            "skipFiles": ["<node_internals>/**"],
             "serverReadyAction": {
-                "action": "debugWithChrome",
-                "pattern": "- Local:.+(https?://.+)",
+                "pattern": "started server on .+, url: (https?://.+)",
                 "uriFormat": "%s",
-                "webRoot": "${workspaceFolder}"
+                "action": "debugWithChrome"
             }
         }
     ]

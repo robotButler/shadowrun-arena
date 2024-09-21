@@ -914,6 +914,14 @@ export function ShadowrunArena() {
     setSelectedFreeAction(null)
   }
 
+  const calculateRoundWins = (results: MatchResult[]) => {
+    const roundWins = { 'Faction 1': 0, 'Faction 2': 0, 'Draw': 0 };
+    results.forEach(result => {
+      roundWins[result.winner as keyof typeof roundWins]++;
+    });
+    return roundWins;
+  };
+
   const FactionSelector = ({ faction }: { faction: 'faction1' | 'faction2' }) => (
     <div>
       <h3 className="mb-2 font-semibold">Faction {faction === 'faction1' ? '1' : '2'}</h3>
@@ -1630,8 +1638,20 @@ export function ShadowrunArena() {
                 <CardTitle>Simulation Results</CardTitle>
               </CardHeader>
               <CardContent>
-                <p>Overall Winner: {combatResults.filter(r => r.winner === 'Faction 1').length > combatResults.length / 2 ? 'Faction 1' : 'Faction 2'}</p>
-                <p>Total Simulations: {combatResults.length}</p>
+                {(() => {
+                  const roundWins = calculateRoundWins(combatResults);
+                  const totalSimulations = combatResults.length;
+                  const overallWinner = roundWins['Faction 1'] > roundWins['Faction 2'] ? 'Faction 1' : 'Faction 2';
+                  return (
+                    <>
+                      <p>Overall Winner: {overallWinner}</p>
+                      <p>Total Simulations: {totalSimulations}</p>
+                      <p>Rounds Won by Faction 1: {roundWins['Faction 1']} ({((roundWins['Faction 1'] / totalSimulations) * 100).toFixed(2)}%)</p>
+                      <p>Rounds Won by Faction 2: {roundWins['Faction 2']} ({((roundWins['Faction 2'] / totalSimulations) * 100).toFixed(2)}%)</p>
+                      {roundWins['Draw'] > 0 && <p>Draws: {roundWins['Draw']} ({((roundWins['Draw'] / totalSimulations) * 100).toFixed(2)}%)</p>}
+                    </>
+                  );
+                })()}
                 <ScrollArea className="h-[300px] w-full mt-4">
                   {combatResults.map((result, index) => (
                     <SimulationResult key={index} result={result} index={index} />
