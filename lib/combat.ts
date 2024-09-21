@@ -75,7 +75,7 @@ interface Character {
     is_conscious: boolean;
     is_alive: boolean;
     total_damage_dealt: number;
-    calculate_wound_modifier(): void;
+    calculate_wound_modifier(): number;
     check_status(): string[];
 }
 
