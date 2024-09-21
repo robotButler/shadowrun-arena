@@ -292,9 +292,7 @@ export function ShadowrunArena() {
         total_damage_dealt: 0,
         previousPhysicalDamage: 0,
         previousStunDamage: 0,
-        calculate_wound_modifier: function() {
-          // Implement wound modifier calculation logic here
-        },
+        calculate_wound_modifier: () => 0,
         check_status: function() {
           // This function is now handled by checkAndUpdateCharacterStatus
           return []
@@ -316,9 +314,7 @@ export function ShadowrunArena() {
         total_damage_dealt: 0,
         previousPhysicalDamage: 0,
         previousStunDamage: 0,
-        calculate_wound_modifier: function() {
-          // Implement wound modifier calculation logic here
-        },
+        calculate_wound_modifier: () => 0,
         check_status: function() {
           // This function is now handled by checkAndUpdateCharacterStatus
           return []
@@ -459,9 +455,7 @@ export function ShadowrunArena() {
       total_damage_dealt: 0,
       previousPhysicalDamage: 0,
       previousStunDamage: 0,
-      calculate_wound_modifier: function() {
-        // Implement wound modifier calculation logic here
-      },
+      calculate_wound_modifier: () => 0,
       check_status: function() {
         return []
       }
