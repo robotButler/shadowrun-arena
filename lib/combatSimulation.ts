@@ -5,6 +5,24 @@ import { calculateDistance } from './utils';
 
 const MELEE_RANGE = 2; // Melee range in meters
 
+function calculateRunningDistance(character: CombatCharacter): number {
+  return character.attributes.agility * 4;
+}
+
+function rollSprinting(character: CombatCharacter): number {
+  const runningSkill = character.skills.running || 0;
+  const sprintPool = runningSkill + character.attributes.strength;
+  const rolls = Array(sprintPool).fill(0).map(() => Math.floor(Math.random() * 6) + 1);
+  const hits = rolls.filter(roll => roll >= 5).length;
+  return hits;
+}
+
+function calculateSprintingDistance(character: CombatCharacter, sprintHits: number): number {
+  const baseDistance = calculateRunningDistance(character);
+  const extraDistance = sprintHits * (character.metatype === 'Dwarf' || character.metatype === 'Troll' ? 1 : 2);
+  return baseDistance + extraDistance;
+}
+
 export const createCombatCharacter = (character: Character, faction: 'faction1' | 'faction2', position: number, factionModifiers: Record<string, number>): CombatCharacter => {
   const { initiative_total } = roll_initiative(character)
   return {
@@ -63,28 +81,41 @@ export const simulateRound = (characters: CombatCharacter[]): RoundResult => {
     if (!target) continue
 
     const weapon = select_best_weapon(character, Math.abs(character.position - target.position))
-    const distance = calculateDistance(character.position, target.position)
+    let distance = calculateDistance(character.position, target.position)
 
-    // Handle movement for melee attacks
-    if (weapon.type === 'Melee' && distance > MELEE_RANGE) {
-      const moveDistance = Math.min(character.attributes.agility * 2, distance - MELEE_RANGE)
-      const direction = character.position < target.position ? 1 : -1
-      character.position += moveDistance * direction
-      roundResult.messages.push(`${character.name} moved ${moveDistance} meters towards ${target.name}`)
-    }
-
-    // Check if now in melee range or if using a ranged weapon
-    if ((weapon.type === 'Melee' && calculateDistance(character.position, target.position) <= MELEE_RANGE) || weapon.type !== 'Melee') {
-      const attackResult = resolve_attack(character, target, weapon, weapon.currentFireMode, calculateDistance(character.position, target.position))
-      roundResult.messages.push(...attackResult.messages)
-      roundResult.damage_dealt += attackResult.damage_dealt
-      roundResult.attack_rolls = attackResult.attack_rolls
-      roundResult.defense_rolls = attackResult.defense_rolls
-      roundResult.resistance_rolls = attackResult.resistance_rolls
-      roundResult.glitch = attackResult.glitch
-      roundResult.criticalGlitch = attackResult.criticalGlitch
+    // Determine action based on distance and weapon type
+    if (distance > calculateRunningDistance(character) && (distance > MELEE_RANGE || weapon.type !== 'Melee')) {
+      // Sprint (Complex Action)
+      const sprintHits = rollSprinting(character);
+      const moveDistance = calculateSprintingDistance(character, sprintHits);
+      const direction = character.position < target.position ? 1 : -1;
+      character.position += moveDistance * direction;
+      roundResult.messages.push(`${character.name} sprinted ${moveDistance} meters towards ${target.name}`);
     } else {
-      roundResult.messages.push(`${character.name} couldn't reach ${target.name} for melee attack`)
+      // Run (Free Action) and perform Complex Action
+      if (distance > MELEE_RANGE || weapon.type !== 'Melee') {
+        const runDistance = calculateRunningDistance(character);
+        const direction = character.position < target.position ? 1 : -1;
+        character.position += Math.min(runDistance, distance - (weapon.type === 'Melee' ? MELEE_RANGE : 0)) * direction;
+        roundResult.messages.push(`${character.name} ran ${Math.min(runDistance, distance - (weapon.type === 'Melee' ? MELEE_RANGE : 0))} meters towards ${target.name}`);
+      }
+
+      // Recalculate distance after running
+      distance = calculateDistance(character.position, target.position);
+
+      // Perform attack if in range
+      if ((weapon.type === 'Melee' && distance <= MELEE_RANGE) || weapon.type !== 'Melee') {
+        const attackResult = resolve_attack(character, target, weapon, weapon.currentFireMode, distance)
+        roundResult.messages.push(...attackResult.messages)
+        roundResult.damage_dealt += attackResult.damage_dealt
+        roundResult.attack_rolls = attackResult.attack_rolls
+        roundResult.defense_rolls = attackResult.defense_rolls
+        roundResult.resistance_rolls = attackResult.resistance_rolls
+        roundResult.glitch = attackResult.glitch
+        roundResult.criticalGlitch = attackResult.criticalGlitch
+      } else {
+        roundResult.messages.push(`${character.name} couldn't reach ${target.name} for melee attack`)
+      }
     }
 
     updateCharacterStatus(character)
