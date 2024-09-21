@@ -47,7 +47,7 @@ import {
   validateWeapon,
   addWeapon,
   removeWeapon
-} from '@/lib/character-management'
+} from '@/lib/characterManagement'
 import { ActionLogEntry, SimulationResult, FactionSelector } from './MiscComponents'
 import { CharacterManagement } from './CharacterManagement'
 

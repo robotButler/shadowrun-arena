@@ -8,7 +8,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Checkbox } from "@/components/ui/checkbox"
 import { PlusCircle, Trash2, Edit } from 'lucide-react'
 import { Character, Weapon, Metatype, FireMode, Attribute, Skill } from '../lib/types'
-import { initialCharacter, initialWeapon, saveCharacter, deleteCharacter, addWeapon, removeWeapon } from '../lib/character-management'
+import { initialCharacter, initialWeapon, saveCharacter, deleteCharacter, addWeapon, removeWeapon } from '../lib/characterManagement'
 
 interface CharacterManagementProps {
   characters: Character[];
