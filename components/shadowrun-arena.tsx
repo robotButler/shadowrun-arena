@@ -21,55 +21,33 @@ import {
   check_combat_end,
   select_best_weapon,
   get_ideal_range,
+} from '../lib/combat'
+import { calculateMaxPhysicalHealth, calculateMaxStunHealth, isCharacterAlive, isCharacterConscious, cn } from '../lib/utils'
+import {
+  Attribute,
+  Skill,
+  FireMode,
+  Metatype,
+  ActionType,
+  SimpleAction,
+  ComplexAction,
   Character,
+  CombatCharacter,
   Weapon,
   RoundResult,
   MatchResult
-} from '../lib/combat'
-import { calculateMaxPhysicalHealth, calculateMaxStunHealth, isCharacterAlive, isCharacterConscious, cn } from '../lib/utils'
-
-type Attribute = 'body' | 'agility' | 'reaction' | 'strength' | 'willpower' | 'logic' | 'intuition' | 'charisma'
-type Skill = 'firearms' | 'close combat' | 'running' | 'armor'
-type FireMode = 'SS' | 'SA' | 'BF' | 'FA'
-type Metatype = 'Human' | 'Elf' | 'Ork' | 'Dwarf' | 'Troll'
-type ActionType = 'Simple' | 'Complex'
-type SimpleAction = 'CallShot' | 'ChangeFireMode' | 'FireRangedWeapon' | 'ReloadWeapon' | 'TakeAim' | 'TakeCover'
-type ComplexAction = 'FireWeapon' | 'MeleeAttack' | 'Sprint'
-
-interface CombatCharacter extends Character {
-  faction: 'faction1' | 'faction2'
-  initiative: number
-  position: number
-  previousPhysicalDamage: number
-  previousStunDamage: number
-}
-
-const initialCharacter: Omit<Character, 'faction' | 'current_initiative' | 'cumulative_recoil' | 'wound_modifier' | 'situational_modifiers' | 'physical_damage' | 'stun_damage' | 'is_conscious' | 'is_alive' | 'total_damage_dealt' | 'calculate_wound_modifier' | 'check_status'> = {
-  id: '',
-  name: '',
-  metatype: 'Human',
-  attributes: {
-    body: 1, agility: 1, reaction: 1, strength: 1,
-    willpower: 1, logic: 1, intuition: 1, charisma: 1
-  },
-  skills: { firearms: 0, 'close combat': 0, running: 0, armor: 0 },
-  weapons: [],
-  initiativeDice: 1
-}
-
-const initialWeapon: Weapon = {
-  name: '',
-  damage: '',
-  type: 'Melee',
-  damageType: 'P',
-  ap: 0,
-  recoilComp: 0,
-  accuracy: 0,
-  fireModes: [],
-  currentFireMode: 'SS',
-  ammoCount: 0,
-  reach: 1
-}
+} from '../lib/types'
+import {
+  initialCharacter,
+  initialWeapon,
+  saveCharacter,
+  deleteCharacter,
+  addToFaction,
+  removeFromFaction,
+  validateWeapon,
+  addWeapon,
+  removeWeapon
+} from '@/lib/character-management'
 
 const ActionLogEntry = ({ summary, details }: { summary: string, details: string[] }) => {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -215,58 +193,20 @@ export function ShadowrunArena() {
     }
   }, [characters]) // This effect runs whenever characters state changes
 
-  const saveCharacter = (character: Character) => {
-    if (!character.name.trim()) {
-      toast.error('Character must have a name')
-      return
-    }
-
-    setCharacters(prevCharacters => {
-      if (character.id) {
-        return prevCharacters.map(c => c.id === character.id ? character : c)
-      } else {
-        const newCharacter = { ...character, id: Date.now().toString() }
-        return [...prevCharacters, newCharacter]
-      }
-    })
-
-    setEditingCharacter(null)
-    setShowWeaponForm(false)
-    toast.success('Character saved successfully')
+  const handleSaveCharacter = (character: Character) => {
+    saveCharacter(character, characters, setCharacters, setEditingCharacter, setShowWeaponForm)
   }
 
-  const deleteCharacter = (id: string) => {
-    setCharacters(characters.filter(c => c.id !== id))
-    setFaction1(faction1.filter(cId => cId !== id))
-    setFaction2(faction2.filter(cId => cId !== id))
-    setFactionModifiers(prevModifiers => {
-      const { [id]: _, ...rest } = prevModifiers
-      return rest
-    })
-    toast.info('Character deleted')
+  const handleDeleteCharacter = (id: string) => {
+    deleteCharacter(id, characters, setCharacters, faction1, setFaction1, faction2, setFaction2, factionModifiers, setFactionModifiers)
   }
 
-  const addToFaction = (characterId: string, faction: 'faction1' | 'faction2') => {
-    if (faction === 'faction1') {
-      setFaction1([...faction1, characterId])
-      setFaction2(faction2.filter(id => id !== characterId))
-    } else {
-      setFaction2([...faction2, characterId])
-      setFaction1(faction1.filter(id => id !== characterId))
-    }
-    setFactionModifiers(prevModifiers => ({ ...prevModifiers, [characterId]: 0 }))
+  const handleAddToFaction = (characterId: string, faction: 'faction1' | 'faction2') => {
+    addToFaction(characterId, faction, faction1, setFaction1, faction2, setFaction2, setFactionModifiers)
   }
 
-  const removeFromFaction = (characterId: string, faction: 'faction1' | 'faction2') => {
-    if (faction === 'faction1') {
-      setFaction1(faction1.filter(id => id !== characterId))
-    } else {
-      setFaction2(faction2.filter(id => id !== characterId))
-    }
-    setFactionModifiers(prevModifiers => {
-      const { [characterId]: _, ...rest } = prevModifiers
-      return rest
-    })
+  const handleRemoveFromFaction = (characterId: string, faction: 'faction1' | 'faction2') => {
+    removeFromFaction(characterId, faction, setFaction1, setFaction2, setFactionModifiers)
   }
 
   const rollInitiative = (character: Character): number => {
@@ -293,10 +233,7 @@ export function ShadowrunArena() {
         previousPhysicalDamage: 0,
         previousStunDamage: 0,
         calculate_wound_modifier: () => 0,
-        check_status: function() {
-          // This function is now handled by checkAndUpdateCharacterStatus
-          return []
-        }
+        check_status: () => []
       })),
       ...faction2.map(id => ({
         ...characters.find(c => c.id === id)!,
@@ -315,10 +252,7 @@ export function ShadowrunArena() {
         previousPhysicalDamage: 0,
         previousStunDamage: 0,
         calculate_wound_modifier: () => 0,
-        check_status: function() {
-          // This function is now handled by checkAndUpdateCharacterStatus
-          return []
-        }
+        check_status: () => []
       }))
     ]
 
@@ -456,9 +390,7 @@ export function ShadowrunArena() {
       previousPhysicalDamage: 0,
       previousStunDamage: 0,
       calculate_wound_modifier: () => 0,
-      check_status: function() {
-        return []
-      }
+      check_status: () => []
     }
   }
 
@@ -544,49 +476,12 @@ export function ShadowrunArena() {
     return 'Draw'
   }
 
-  const addWeapon = () => {
-    if (!validateWeapon(newWeapon)) {
-      return
-    }
-
-    if (editingCharacter) {
-      setEditingCharacter({
-        ...editingCharacter,
-        weapons: [...editingCharacter.weapons, newWeapon]
-      })
-      setNewWeapon(initialWeapon)
-      setShowWeaponForm(false)
-      toast.success('Weapon added successfully')
-    }
+  const handleAddWeapon = () => {
+    addWeapon(newWeapon, editingCharacter, setEditingCharacter, setNewWeapon, setShowWeaponForm)
   }
 
-  const validateWeapon = (weapon: Weapon): boolean => {
-    if (!weapon.name.trim()) {
-      toast.error('Weapon must have a name')
-      return false
-    }
-    if (!weapon.damage.trim()) {
-      toast.error('Weapon must have a damage value')
-      return false
-    }
-    if (weapon.type === 'Ranged') {
-      if (weapon.ammoCount <= 0) {
-        toast.error('Ranged weapons must have a positive ammo count')
-        return false
-      }
-      if (weapon.fireModes.length === 0) {
-        toast.error('Ranged weapons must have at least one fire mode')
-        return false
-      }
-    }
-    return true
-  }
-
-  const removeWeapon = (index: number) => {
-    if (editingCharacter) {
-      const updatedWeapons = editingCharacter.weapons.filter((_, i) => i !== index)
-      setEditingCharacter({ ...editingCharacter, weapons: updatedWeapons })
-    }
+  const handleRemoveWeapon = (index: number) => {
+    removeWeapon(index, editingCharacter, setEditingCharacter)
   }
 
   const toggleSimulationDetails = (index: number) => {
@@ -946,12 +841,12 @@ export function ShadowrunArena() {
                     ))}
                   </SelectContent>
                 </Select>
-                <Button variant="outline" size="sm" onClick={() => removeFromFaction(character.id, faction)}>
+                <Button variant="outline" size="sm" onClick={() => handleRemoveFromFaction(character.id, faction)}>
                   Remove
                 </Button>
               </div>
             ) : (
-              <Button variant="outline" size="sm" onClick={() => addToFaction(character.id, faction)}>
+              <Button variant="outline" size="sm" onClick={() => handleAddToFaction(character.id, faction)}>
                 Add
               </Button>
             )}
@@ -1004,7 +899,7 @@ export function ShadowrunArena() {
                       >
                         <Edit className="h-4 w-4" />
                       </Button>
-                      <Button variant="outline" size="icon" onClick={() => deleteCharacter(character.id)}>
+                      <Button variant="outline" size="icon" onClick={() => handleDeleteCharacter(character.id)}>
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
@@ -1041,7 +936,7 @@ export function ShadowrunArena() {
                 <CardTitle>{editingCharacter.id ? 'Edit' : 'Create'} Character</CardTitle>
               </CardHeader>
               <CardContent>
-                <form onSubmit={(e) => { e.preventDefault(); saveCharacter(editingCharacter); }}>
+                <form onSubmit={(e) => { e.preventDefault(); handleSaveCharacter(editingCharacter); }}>
                   <div className="grid w-full items-center gap-4">
                     <div className="flex flex-col space-y-1.5">
                       <Label htmlFor="name">Name</Label>
@@ -1123,7 +1018,7 @@ export function ShadowrunArena() {
                             AP: {weapon.ap} | RC: {weapon.recoilComp} | ACC: {weapon.accuracy} | 
                             {weapon.type === 'Ranged' ? `Ammo: ${weapon.ammoCount} | Modes: ${weapon.fireModes.join(', ')}` : `Reach: ${weapon.reach}`}
                           </span>
-                          <Button type="button" variant="outline" size="sm" onClick={() => removeWeapon(index)}>Remove</Button>
+                          <Button type="button" variant="outline" size="sm" onClick={() => handleRemoveWeapon(index)}>Remove</Button>
                         </div>
                       ))}
                       {!showWeaponForm && (
@@ -1282,7 +1177,7 @@ export function ShadowrunArena() {
                               </div>
                             </div>
                           )}
-                          <Button type="button" onClick={addWeapon}>Save Weapon</Button>
+                          <Button type="button" onClick={handleAddWeapon}>Save Weapon</Button>
                         </div>
                       )}
                     </div>

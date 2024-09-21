@@ -1,5 +1,7 @@
 // combat.ts
 
+import { Weapon, Character, RoundResult, MatchResult } from './types';
+
 // Utility functions
 function roll_d6(numDice: number): number[] {
     const rolls: number[] = [];
@@ -27,81 +29,6 @@ const range_modifiers: { [weaponType: string]: [number, number][] } = {
     // Example:
     // 'Pistol': [[0, 0], [5, -1], [20, -3], [40, -6]],
 };
-
-// Interfaces
-interface Weapon {
-    name: string;
-    damage: string;
-    type: 'Melee' | 'Ranged';
-    damageType: 'P' | 'S';
-    ap: number;
-    recoilComp: number;
-    accuracy: number;
-    fireModes: ('SS' | 'SA' | 'BF' | 'FA')[];
-    currentFireMode: 'SS' | 'SA' | 'BF' | 'FA';
-    ammoCount: number;
-    reach: number;
-}
-
-interface Character {
-    id: string;
-    name: string;
-    metatype: 'Human' | 'Elf' | 'Ork' | 'Dwarf' | 'Troll';
-    attributes: {
-        body: number;
-        agility: number;
-        reaction: number;
-        strength: number;
-        willpower: number;
-        logic: number;
-        intuition: number;
-        charisma: number;
-    };
-    skills: {
-        firearms: number;
-        'close combat': number;
-        running: number;
-        armor: number;
-    };
-    weapons: Weapon[];
-    initiativeDice: number;
-    faction: string;
-    current_initiative: number;
-    cumulative_recoil: number;
-    wound_modifier: number;
-    situational_modifiers: number;
-    physical_damage: number;
-    stun_damage: number;
-    is_conscious: boolean;
-    is_alive: boolean;
-    total_damage_dealt: number;
-    calculate_wound_modifier(): number;
-    check_status(): string[];
-}
-
-// Update the existing CombatResult to RoundResult
-interface RoundResult {
-    actingCharacter: string;
-    initiativePhase: number;
-    attacker_hits: number;
-    defender_hits: number;
-    damage_dealt: number;
-    attack_rolls: number[];
-    defense_rolls: number[];
-    resistance_rolls: number[];
-    status_changes: string[];
-    messages: string[];
-    glitch: boolean;
-    criticalGlitch: boolean;
-}
-
-// Add the new MatchResult interface
-interface MatchResult {
-    winner: string;
-    rounds: number;
-    roundResults: RoundResult[];
-    details: string;
-}
 
 // Functions
 function roll_initiative(character: Character): { initiative_total: number, initiative_rolls: number[] } {
@@ -416,9 +343,3 @@ export {
     select_best_weapon,
     get_ideal_range
 }
-export type {
-    Weapon,
-    Character,
-    RoundResult,
-    MatchResult
-};
