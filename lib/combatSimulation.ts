@@ -1,6 +1,9 @@
 import { Character, CombatCharacter, Weapon, MatchResult, RoundResult } from './types'
 import { roll_initiative, resolve_attack, check_combat_end, select_best_weapon, get_ideal_range } from './combat'
 import { calculateMaxPhysicalHealth, calculateMaxStunHealth, isCharacterAlive, isCharacterConscious } from './utils'
+import { calculateDistance } from './utils';
+
+const MELEE_RANGE = 2; // Melee range in meters
 
 export const createCombatCharacter = (character: Character, faction: 'faction1' | 'faction2', position: number, factionModifiers: Record<string, number>): CombatCharacter => {
   const { initiative_total } = roll_initiative(character)
@@ -60,18 +63,32 @@ export const simulateRound = (characters: CombatCharacter[]): RoundResult => {
     if (!target) continue
 
     const weapon = select_best_weapon(character, Math.abs(character.position - target.position))
-    const attackResult = resolve_attack(character, target, weapon, weapon.currentFireMode, Math.abs(character.position - target.position))
+    const distance = calculateDistance(character.position, target.position)
 
-    roundResult.messages.push(...attackResult.messages)
-    roundResult.damage_dealt += attackResult.damage_dealt
+    // Handle movement for melee attacks
+    if (weapon.type === 'Melee' && distance > MELEE_RANGE) {
+      const moveDistance = Math.min(character.attributes.agility * 2, distance - MELEE_RANGE)
+      const direction = character.position < target.position ? 1 : -1
+      character.position += moveDistance * direction
+      roundResult.messages.push(`${character.name} moved ${moveDistance} meters towards ${target.name}`)
+    }
+
+    // Check if now in melee range or if using a ranged weapon
+    if ((weapon.type === 'Melee' && calculateDistance(character.position, target.position) <= MELEE_RANGE) || weapon.type !== 'Melee') {
+      const attackResult = resolve_attack(character, target, weapon, weapon.currentFireMode, calculateDistance(character.position, target.position))
+      roundResult.messages.push(...attackResult.messages)
+      roundResult.damage_dealt += attackResult.damage_dealt
+      roundResult.attack_rolls = attackResult.attack_rolls
+      roundResult.defense_rolls = attackResult.defense_rolls
+      roundResult.resistance_rolls = attackResult.resistance_rolls
+      roundResult.glitch = attackResult.glitch
+      roundResult.criticalGlitch = attackResult.criticalGlitch
+    } else {
+      roundResult.messages.push(`${character.name} couldn't reach ${target.name} for melee attack`)
+    }
 
     updateCharacterStatus(character)
     updateCharacterStatus(target)
-
-    const idealRange = get_ideal_range(weapon.type)
-    const currentDistance = Math.abs(character.position - target.position)
-    const moveDistance = Math.min(character.attributes.agility * 2, Math.abs(currentDistance - idealRange))
-    character.position += currentDistance > idealRange ? moveDistance : -moveDistance
 
     character.current_initiative -= 10
 
@@ -140,3 +157,18 @@ export const calculateRoundWins = (results: MatchResult[]) => {
   });
   return roundWins;
 };
+
+function selectWeapon(character: CombatCharacter): Weapon {
+  const meleeWeapons = character.weapons.filter(w => w.type === 'Melee');
+  const rangedWeapons = character.weapons.filter(w => w.type === 'Ranged');
+  
+  if (meleeWeapons.length > 0 && Math.random() < 0.3) {
+    // 30% chance to choose a melee weapon if available
+    return meleeWeapons[Math.floor(Math.random() * meleeWeapons.length)];
+  } else if (rangedWeapons.length > 0) {
+    return rangedWeapons[Math.floor(Math.random() * rangedWeapons.length)];
+  } else {
+    // Fallback to melee if no ranged weapons
+    return meleeWeapons[Math.floor(Math.random() * meleeWeapons.length)];
+  }
+}

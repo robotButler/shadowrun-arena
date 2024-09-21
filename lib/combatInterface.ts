@@ -16,6 +16,8 @@ import {
   Character
 } from './types';
 
+const MELEE_RANGE = 2; // Melee range in meters
+
 export const startNewCombat = (
   faction1: string[],
   faction2: string[],
@@ -136,25 +138,46 @@ export const handleMovement = (
   movementDirection: 'Toward' | 'Away'
 ): {
   updatedCharacters: CombatCharacter[],
-  actionLog: { summary: string, details: string[] }
+  actionLog: { summary: string, details: string[] },
+  remainingDistance: number
 } => {
   const currentChar = combatCharacters[currentCharacterIndex];
   const maxDistance = currentChar.attributes.agility * 2;
 
   if (movementDistance > maxDistance) {
     toast.error(`Maximum movement distance is ${maxDistance} meters`);
-    return { updatedCharacters: combatCharacters, actionLog: { summary: '', details: [] } };
+    return { updatedCharacters: combatCharacters, actionLog: { summary: '', details: [] }, remainingDistance: 0 };
   }
 
   const updatedChars = [...combatCharacters];
-  updatedChars[currentCharacterIndex].position += movementDirection === 'Toward' ? movementDistance : -movementDistance;
+  const target = updatedChars.find(c => c.faction !== currentChar.faction && c.is_conscious);
+  
+  if (!target) {
+    return { updatedCharacters: combatCharacters, actionLog: { summary: 'No valid target found', details: [] }, remainingDistance: 0 };
+  }
+
+  const initialDistance = Math.abs(currentChar.position - target.position);
+  let newPosition = currentChar.position;
+
+  if (movementDirection === 'Toward') {
+    newPosition += movementDistance;
+  } else {
+    newPosition -= movementDistance;
+  }
+
+  updatedChars[currentCharacterIndex].position = newPosition;
+
+  const newDistance = Math.abs(newPosition - target.position);
+  const actualMovement = Math.abs(initialDistance - newDistance);
+  const remainingDistance = movementDistance - actualMovement;
 
   return {
     updatedCharacters: updatedChars,
     actionLog: { 
-      summary: `${currentChar.name} moved ${movementDistance} meters ${movementDirection.toLowerCase()} the opposing faction.`,
-      details: []
-    }
+      summary: `${currentChar.name} moved ${actualMovement} meters ${movementDirection.toLowerCase()} the opposing faction.`,
+      details: [`New distance to target: ${newDistance} meters`, `Remaining movement: ${remainingDistance} meters`]
+    },
+    remainingDistance
   };
 };
 
@@ -163,7 +186,8 @@ export const handleComplexAction = (
   currentCharacterIndex: number,
   selectedComplexAction: ComplexAction,
   selectedWeapon: Weapon | null,
-  selectedTargetId: string | null
+  selectedTargetId: string | null,
+  remainingMovement: number
 ): {
   updatedCharacters: CombatCharacter[],
   actionLog: { summary: string, details: string[] },
@@ -181,12 +205,29 @@ export const handleComplexAction = (
     const hits = sprintRoll.filter(roll => roll >= 5).length;
     const extraDistance = ['Dwarf', 'Troll'].includes(currentChar.metatype) ? hits : hits * 2;
 
-    updatedChars[currentCharacterIndex].position += extraDistance;
+    const target = combatCharacters.find(c => c.faction !== currentChar.faction && c.is_conscious);
+    if (target) {
+      const direction = currentChar.position < target.position ? 1 : -1;
+      updatedChars[currentCharacterIndex].position += (remainingMovement + extraDistance) * direction;
+    }
     actionLog = { summary: `${currentChar.name} sprinted an extra ${extraDistance} meters!`, details: [] };
   } else if ((selectedComplexAction === 'FireWeapon' || selectedComplexAction === 'MeleeAttack') && selectedWeapon && selectedTargetId) {
     const target = combatCharacters.find(c => c.id === selectedTargetId);
     if (target) {
       const distance = Math.abs(currentChar.position - target.position);
+      
+      if (selectedComplexAction === 'MeleeAttack' && distance > MELEE_RANGE) {
+        if (remainingMovement >= distance - MELEE_RANGE) {
+          // Move into melee range
+          const direction = currentChar.position < target.position ? 1 : -1;
+          updatedChars[currentCharacterIndex].position += (distance - MELEE_RANGE) * direction;
+          actionLog.details.push(`${currentChar.name} moved ${distance - MELEE_RANGE} meters to engage in melee.`);
+        } else {
+          actionLog.summary = `${currentChar.name} couldn't reach the target for melee attack.`;
+          return { updatedCharacters: updatedChars, actionLog, combatEnded: false };
+        }
+      }
+
       const result = resolve_attack(currentChar, target, selectedWeapon, selectedWeapon.currentFireMode, distance);
       
       actionLog.summary = `${currentChar.name} attacked ${target.name} with ${selectedWeapon.name}`;
@@ -223,7 +264,8 @@ export const handleSimpleActions = (
   currentCharacterIndex: number,
   selectedSimpleActions: SimpleAction[],
   selectedWeapons: (Weapon | null)[],
-  selectedTargets: (string | null)[]
+  selectedTargets: (string | null)[],
+  remainingMovement: number
 ): {
   updatedCharacters: CombatCharacter[],
   actionLog: { summary: string, details: string[] }[],
@@ -274,6 +316,19 @@ export const handleSimpleActions = (
       actionLog.push({ summary: `${currentChar.name} changed fire mode.`, details: [] });
     }
   });
+
+  // Handle remaining movement after actions
+  if (remainingMovement > 0) {
+    const target = updatedChars.find(c => c.faction !== currentChar.faction && c.is_conscious);
+    if (target) {
+      const direction = currentChar.position < target.position ? 1 : -1;
+      updatedChars[currentCharacterIndex].position += remainingMovement * direction;
+      actionLog.push({ 
+        summary: `${currentChar.name} moved ${remainingMovement} meters.`,
+        details: [`New position: ${updatedChars[currentCharacterIndex].position} meters`]
+      });
+    }
+  }
 
   return { updatedCharacters: updatedChars, actionLog, combatEnded };
 };

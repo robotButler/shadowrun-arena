@@ -23,7 +23,7 @@ import {
   handleFireModeChange,
   displayRoundSummary
 } from '../lib/combatInterface'
-import { calculateMaxPhysicalHealth, calculateMaxStunHealth, isCharacterAlive, isCharacterConscious, cn } from '../lib/utils'
+import { calculateMaxPhysicalHealth, calculateMaxStunHealth, isCharacterAlive, isCharacterConscious, cn, calculateDistance } from '../lib/utils'
 import {
   Attribute,
   Skill,
@@ -86,6 +86,8 @@ export function ShadowrunArena() {
   const [initialInitiatives, setInitialInitiatives] = useState<Record<string, number>>({});
   const [isCombatActive, setIsCombatActive] = useState(false);
   const [simulationInitialDistance, setSimulationInitialDistance] = useState(10)
+  const [remainingMovement, setRemainingMovement] = useState(0);
+  const [meleeRangeError, setMeleeRangeError] = useState<string | null>(null);
 
   // Load characters from localStorage only once when the component mounts
   useEffect(() => {
@@ -196,13 +198,29 @@ export function ShadowrunArena() {
 
   const handleComplexActionSelection = (action: ComplexAction) => {
     setSelectedComplexAction(action);
+    setMeleeRangeError(null);
     const currentChar = combatCharacters[currentCharacterIndex];
     let defaultWeapon = null;
     let defaultTarget = null;
 
     if (action === 'FireWeapon' || action === 'MeleeAttack') {
-      defaultWeapon = currentChar.weapons.find(w => w.type === 'Ranged') || null;
-      defaultTarget = combatCharacters.find(c => c.faction !== currentChar.faction && c.is_conscious)?.id || null;
+      defaultWeapon = currentChar.weapons.find(w => w.type === (action === 'FireWeapon' ? 'Ranged' : 'Melee')) || null;
+      
+      // For MeleeAttack, find the closest target within melee range
+      if (action === 'MeleeAttack') {
+        const meleeTargets = combatCharacters.filter(c => 
+          c.faction !== currentChar.faction && 
+          c.is_conscious &&
+          calculateDistance(currentChar.position, c.position) <= 2 // Assuming melee range is 2 meters
+        );
+        defaultTarget = meleeTargets.length > 0 ? meleeTargets[0].id : null;
+        
+        if (!defaultTarget) {
+          setMeleeRangeError("No opponents within melee range.");
+        }
+      } else {
+        defaultTarget = combatCharacters.find(c => c.faction !== currentChar.faction && c.is_conscious)?.id || null;
+      }
     }
 
     setSelectedWeapons([defaultWeapon]);
@@ -223,6 +241,17 @@ export function ShadowrunArena() {
       newTargets[index] = targetId;
       return newTargets;
     });
+
+    // Check melee range if MeleeAttack is selected
+    if (selectedComplexAction === 'MeleeAttack') {
+      const attacker = combatCharacters[currentCharacterIndex];
+      const target = combatCharacters.find(c => c.id === targetId);
+      if (target && calculateDistance(attacker.position, target.position) > 2) {
+        setMeleeRangeError("Selected target is not within melee range.");
+      } else {
+        setMeleeRangeError(null);
+      }
+    }
   };
 
   const handleMovementHandler = () => {
@@ -231,15 +260,21 @@ export function ShadowrunArena() {
       return
     }
 
-    const { updatedCharacters, actionLog } = handleMovement(combatCharacters, currentCharacterIndex, movementDistance, movementDirection);
+    const { updatedCharacters, actionLog, remainingDistance } = handleMovement(combatCharacters, currentCharacterIndex, movementDistance, movementDirection);
     setCombatCharacters(updatedCharacters);
     setActionLog(prev => [...prev, actionLog]);
+    setRemainingMovement(remainingDistance);
     clearInputs();
-    nextCharacter();
+    // Don't call nextCharacter() here, as movement is part of the turn
   };
 
   const handleComplexActionHandler = () => {
-    const { updatedCharacters, actionLog, combatEnded } = handleComplexAction(combatCharacters, currentCharacterIndex, selectedComplexAction!, selectedWeapons[0], selectedTargets[0]);
+    if (selectedComplexAction === 'MeleeAttack' && meleeRangeError) {
+      toast.error(meleeRangeError);
+      return;
+    }
+
+    const { updatedCharacters, actionLog, combatEnded } = handleComplexAction(combatCharacters, currentCharacterIndex, selectedComplexAction!, selectedWeapons[0], selectedTargets[0], remainingMovement);
     setCombatCharacters(updatedCharacters);
     setActionLog(prev => [...prev, actionLog]);
     if (combatEnded) {
@@ -247,11 +282,12 @@ export function ShadowrunArena() {
       return;
     }
     clearInputs();
+    setRemainingMovement(0);
     nextCharacter();
   };
 
   const handleSimpleActionsHandler = () => {
-    const { updatedCharacters, actionLog, combatEnded } = handleSimpleActions(combatCharacters, currentCharacterIndex, selectedSimpleActions, selectedWeapons, selectedTargets);
+    const { updatedCharacters, actionLog, combatEnded } = handleSimpleActions(combatCharacters, currentCharacterIndex, selectedSimpleActions, selectedWeapons, selectedTargets, remainingMovement);
     setCombatCharacters(updatedCharacters);
     setActionLog(prev => [...prev, ...actionLog]);
     if (combatEnded) {
@@ -259,6 +295,7 @@ export function ShadowrunArena() {
       return;
     }
     clearInputs();
+    setRemainingMovement(0);
     nextCharacter();
   };
 
@@ -611,15 +648,17 @@ export function ShadowrunArena() {
                         max={combatCharacters[currentCharacterIndex].attributes.agility * 2}
                       />
                       <span>meters</span>
+                      <Button onClick={handleMovementHandler}>Move</Button>
                     </div>
+                    {remainingMovement > 0 && (
+                      <p>Remaining movement: {remainingMovement} meters</p>
+                    )}
                   </div>
                   <Button onClick={() => {
                     if (selectedActionType === 'Simple') {
                       handleSimpleActionsHandler()
                     } else if (selectedActionType === 'Complex') {
                       handleComplexActionHandler()
-                    } else if (movementDistance > 0) {
-                      handleMovementHandler()
                     } else if (selectedFreeAction) {
                       // Handle free action here
                       setActionLog(prev => [...prev, { summary: `${combatCharacters[currentCharacterIndex].name} performed a ${selectedFreeAction} action.`, details: [] }])
