@@ -15,13 +15,14 @@ import { PlusCircle, Trash2, Edit, Swords, Play, ChevronDown, ChevronUp } from '
 import { toast, ToastContainer } from 'react-toastify'
 import 'react-toastify/dist/ReactToastify.css'
 import {
-  roll_initiative,
-  resolve_attack,
-  apply_damage,
-  check_combat_end,
-  select_best_weapon,
-  get_ideal_range,
-} from '../lib/combat'
+  startNewCombat,
+  updateInitiative,
+  handleMovement,
+  handleComplexAction,
+  handleSimpleActions,
+  handleFireModeChange,
+  displayRoundSummary
+} from '../lib/combatInterface'
 import { calculateMaxPhysicalHealth, calculateMaxStunHealth, isCharacterAlive, isCharacterConscious, cn } from '../lib/utils'
 import {
   Attribute,
@@ -50,6 +51,15 @@ import {
 } from '@/lib/characterManagement'
 import { ActionLogEntry, SimulationResult, FactionSelector } from './MiscComponents'
 import { CharacterManagement } from './CharacterManagement'
+import {
+  runSingleSimulation,
+  createCombatCharacter,
+  simulateRound,
+  selectTarget,
+  updateCharacterStatus,
+  determineWinner,
+  calculateRoundWins
+} from '../lib/combatSimulation'
 
 export function ShadowrunArena() {
   const [characters, setCharacters] = useState<Character[]>([])
@@ -93,272 +103,42 @@ export function ShadowrunArena() {
     }
   }, [characters]) // This effect runs whenever characters state changes
 
-  const startNewCombat = () => {
-    const combatChars: CombatCharacter[] = [
-      ...faction1.map(id => ({
-        ...characters.find(c => c.id === id)!,
-        faction: 'faction1' as const,
-        initiative: 0,
-        position: 0,
-        current_initiative: 0,
-        cumulative_recoil: 0,
-        wound_modifier: 0,
-        situational_modifiers: factionModifiers[id] || 0,
-        physical_damage: 0,
-        stun_damage: 0,
-        is_conscious: true,
-        is_alive: true,
-        total_damage_dealt: 0,
-        previousPhysicalDamage: 0,
-        previousStunDamage: 0,
-        calculate_wound_modifier: () => 0,
-        check_status: () => []
-      })),
-      ...faction2.map(id => ({
-        ...characters.find(c => c.id === id)!,
-        faction: 'faction2' as const,
-        initiative: 0,
-        position: simulationInitialDistance,
-        current_initiative: 0,
-        cumulative_recoil: 0,
-        wound_modifier: 0,
-        situational_modifiers: factionModifiers[id] || 0,
-        physical_damage: 0,
-        stun_damage: 0,
-        is_conscious: true,
-        is_alive: true,
-        total_damage_dealt: 0,
-        previousPhysicalDamage: 0,
-        previousStunDamage: 0,
-        calculate_wound_modifier: () => 0,
-        check_status: () => []
-      }))
-    ]
-
-    const initialInitiativeRolls: Record<string, number> = {};
-    const initiativeLog: string[] = ["Initial Initiative Rolls:"];
-
-    combatChars.forEach(char => {
-      const { initiative_total, initiative_rolls } = roll_initiative(char as Character)
-      char.initiative = initiative_total
-      char.current_initiative = initiative_total
-      initialInitiativeRolls[char.id] = initiative_total
-
-      initiativeLog.push(`${char.name}: ${initiative_total} (Dice: ${initiative_rolls.join(', ')})`)
-    })
-
-    combatChars.sort((a, b) => b.initiative - a.initiative)
-    setCombatCharacters(combatChars)
-    setInitialInitiatives(initialInitiativeRolls)
-    setCurrentInitiativePhase(combatChars[0].initiative)
-    setCurrentCharacterIndex(0)
-    setActionLog([{ summary: "Combat Started", details: initiativeLog }])
-    clearInputs()
-    setRoundNumber(1)
-    setIsCombatActive(true)
-  }
+  const startNewCombatHandler = () => {
+    const { combatCharacters, initialInitiatives, currentInitiativePhase, currentCharacterIndex, actionLog } = startNewCombat(faction1, faction2, characters, factionModifiers, initialDistance);
+    setCombatCharacters(combatCharacters);
+    setInitialInitiatives(initialInitiatives);
+    setCurrentInitiativePhase(currentInitiativePhase);
+    setCurrentCharacterIndex(currentCharacterIndex);
+    setActionLog(actionLog);
+    clearInputs();
+    setRoundNumber(1);
+    setIsCombatActive(true);
+  };
 
   const endCombat = () => {
     setIsCombatActive(false)
     toast.info("Combat has ended!")
   }
 
-  const updateInitiative = () => {
-    let highestInitiative = -1;
-    let nextCharacterIndex = -1;
-
-    const updatedChars = combatCharacters.map((char, index) => {
-      if (index === currentCharacterIndex) {
-        char.current_initiative -= 10;
-      }
-      if (char.current_initiative > highestInitiative && char.is_conscious) {
-        highestInitiative = char.current_initiative;
-        nextCharacterIndex = index;
-      }
-      return char;
-    });
-
-    if (highestInitiative < 1) {
-      // Reset all initiatives to their initial values
-      updatedChars.forEach(char => {
-        char.current_initiative = initialInitiatives[char.id];
-      });
-      highestInitiative = Math.max(...updatedChars.map(char => char.current_initiative));
-      nextCharacterIndex = updatedChars.findIndex(char => char.current_initiative === highestInitiative && char.is_conscious);
-      
-      // Log the initiative reset
-      setActionLog(prev => [...prev, { 
-        summary: "Initiative Reset", 
-        details: ["All characters' initiatives have been reset to their initial values."]
-      }]);
-    }
-
-    setCombatCharacters(updatedChars);
-    setCurrentInitiativePhase(highestInitiative);
-    setCurrentCharacterIndex(nextCharacterIndex);
-  }
-
   const nextCharacter = () => {
-    const combatEnded = displayRoundSummary();
-    if (combatEnded) {
-      endCombat();
-      return;
+    const { updatedCharacters, newInitiativePhase, newCharacterIndex, actionLog } = updateInitiative(combatCharacters, currentCharacterIndex, initialInitiatives);
+    setCombatCharacters(updatedCharacters);
+    setCurrentInitiativePhase(newInitiativePhase);
+    setCurrentCharacterIndex(newCharacterIndex);
+    if (actionLog) {
+      setActionLog(prev => [...prev, actionLog]);
     }
-
-    updateInitiative();
-  }
+  };
 
   const runSimulations = () => {
     const results: MatchResult[] = []
 
     for (let i = 0; i < simulations; i++) {
-      const simulationResult = runSingleSimulation()
+      const simulationResult = runSingleSimulation(faction1, faction2, characters, factionModifiers, simulationInitialDistance)
       results.push(simulationResult)
     }
 
     setCombatResults(results)
-  }
-
-  const runSingleSimulation = (): MatchResult => {
-    const combatChars: CombatCharacter[] = [
-      ...faction1.map(id => createCombatCharacter(characters.find(c => c.id === id)!, 'faction1', 0)),
-      ...faction2.map(id => createCombatCharacter(characters.find(c => c.id === id)!, 'faction2', simulationInitialDistance))
-    ]
-
-    let roundResults: RoundResult[] = []
-    let round = 1
-    let combatEnded = false
-
-    while (!combatEnded && round <= 20) {
-      const roundResult = simulateRound(combatChars)
-      roundResults.push(roundResult)
-
-      combatEnded = check_combat_end(combatChars)
-      if (combatEnded) break
-
-      round++
-    }
-
-    const winner = determineWinner(combatChars)
-    const details = `Combat ended after ${round} rounds. ${winner} wins.`
-
-    return {
-      winner,
-      rounds: round,
-      roundResults,
-      details
-    }
-  }
-
-  const createCombatCharacter = (character: Character, faction: 'faction1' | 'faction2', position: number): CombatCharacter => {
-    const { initiative_total } = roll_initiative(character)
-    return {
-      ...character,
-      faction,
-      initiative: initiative_total,
-      current_initiative: initiative_total,
-      position,
-      cumulative_recoil: 0,
-      wound_modifier: 0,
-      situational_modifiers: factionModifiers[character.id] || 0,
-      physical_damage: 0,
-      stun_damage: 0,
-      is_conscious: true,
-      is_alive: true,
-      total_damage_dealt: 0,
-      previousPhysicalDamage: 0,
-      previousStunDamage: 0,
-      calculate_wound_modifier: () => 0,
-      check_status: () => []
-    }
-  }
-
-  const simulateRound = (characters: CombatCharacter[]): RoundResult => {
-    const roundResult: RoundResult = {
-      actingCharacter: '',
-      initiativePhase: 0,
-      attacker_hits: 0,
-      defender_hits: 0,
-      damage_dealt: 0,
-      attack_rolls: [],
-      defense_rolls: [],
-      resistance_rolls: [],
-      status_changes: [],
-      messages: [],
-      glitch: false,
-      criticalGlitch: false
-    }
-
-    characters.sort((a, b) => b.current_initiative - a.current_initiative)
-
-    // Check if we need to reset initiatives
-    if (characters[0].current_initiative < 1) {
-      characters.forEach(char => {
-        char.current_initiative = char.initiative;
-      });
-      roundResult.messages.push("Initiative reset: All characters' initiatives have been reset to their initial values.");
-    }
-
-    for (const character of characters) {
-      if (!character.is_conscious) continue
-
-      roundResult.actingCharacter = character.name
-      roundResult.initiativePhase = character.current_initiative
-
-      const target = selectTarget(character, characters)
-      if (!target) continue
-
-      const weapon = select_best_weapon(character, Math.abs(character.position - target.position))
-      const attackResult = resolve_attack(character, target, weapon, weapon.currentFireMode, Math.abs(character.position - target.position))
-
-      roundResult.messages.push(...attackResult.messages)
-      roundResult.damage_dealt += attackResult.damage_dealt
-
-      // Update character statuses
-      updateCharacterStatus(character)
-      updateCharacterStatus(target)
-
-      // Move character towards ideal range
-      const idealRange = get_ideal_range(weapon.type)
-      const currentDistance = Math.abs(character.position - target.position)
-      const moveDistance = Math.min(character.attributes.agility * 2, Math.abs(currentDistance - idealRange))
-      character.position += currentDistance > idealRange ? moveDistance : -moveDistance
-
-      // Reduce initiative
-      character.current_initiative -= 10
-
-      // We break after the first character's action to simulate one character's turn per round
-      break
-    }
-
-    return roundResult
-  }
-
-  const selectTarget = (attacker: CombatCharacter, characters: CombatCharacter[]): CombatCharacter | null => {
-    return characters.find(c => c.faction !== attacker.faction && c.is_conscious) || null
-  }
-
-  const updateCharacterStatus = (character: CombatCharacter) => {
-    const maxPhysicalHealth = calculateMaxPhysicalHealth(character.attributes.body)
-    const maxStunHealth = calculateMaxStunHealth(character.attributes.willpower)
-
-    character.is_alive = isCharacterAlive(character.physical_damage, maxPhysicalHealth)
-    character.is_conscious = isCharacterConscious(character.stun_damage, maxStunHealth, character.physical_damage, maxPhysicalHealth)
-  }
-
-  const determineWinner = (characters: CombatCharacter[]): string => {
-    const faction1Alive = characters.some(c => c.faction === 'faction1' && c.is_conscious)
-    const faction2Alive = characters.some(c => c.faction === 'faction2' && c.is_conscious)
-
-    if (faction1Alive && !faction2Alive) return 'Faction 1'
-    if (!faction1Alive && faction2Alive) return 'Faction 2'
-    return 'Draw'
-  }
-
-  const toggleSimulationDetails = (index: number) => {
-    setExpandedSimulations(prev => 
-      prev.includes(index) ? prev.filter(i => i !== index) : [...prev, index]
-    )
   }
 
   const setDefaultWeaponAndTarget = () => {
@@ -445,220 +225,62 @@ export function ShadowrunArena() {
     });
   };
 
-  const handleMovement = () => {
+  const handleMovementHandler = () => {
     if (movementDistance === 0) {
       toast.error('Please enter a movement distance')
       return
     }
 
-    const currentChar = combatCharacters[currentCharacterIndex]
-    const maxDistance = currentChar.attributes.agility * 2
+    const { updatedCharacters, actionLog } = handleMovement(combatCharacters, currentCharacterIndex, movementDistance, movementDirection);
+    setCombatCharacters(updatedCharacters);
+    setActionLog(prev => [...prev, actionLog]);
+    clearInputs();
+    nextCharacter();
+  };
 
-    if (movementDistance > maxDistance) {
-      toast.error(`Maximum movement distance is ${maxDistance} meters`)
-      return
+  const handleComplexActionHandler = () => {
+    const { updatedCharacters, actionLog, combatEnded } = handleComplexAction(combatCharacters, currentCharacterIndex, selectedComplexAction!, selectedWeapons[0], selectedTargets[0]);
+    setCombatCharacters(updatedCharacters);
+    setActionLog(prev => [...prev, actionLog]);
+    if (combatEnded) {
+      endCombat();
+      return;
     }
+    clearInputs();
+    nextCharacter();
+  };
 
-    const updatedChars = [...combatCharacters]
-    updatedChars[currentCharacterIndex].position += movementDirection === 'Toward' ? movementDistance : -movementDistance
-    setCombatCharacters(updatedChars)
-
-    setActionLog(prev => [...prev, { summary: `${currentChar.name} moved ${movementDistance} meters ${movementDirection.toLowerCase()} the opposing faction.`, details: [] }])
-    clearInputs()
-    nextCharacter()
-  }
-
-  const handleComplexAction = () => {
-    const currentChar = combatCharacters[currentCharacterIndex]
-
-    if (selectedComplexAction === 'Sprint') {
-      const runningSkill = currentChar.skills.running
-      const agilityDice = currentChar.attributes.agility
-      const sprintRoll = Array(runningSkill + agilityDice).fill(0).map(() => Math.floor(Math.random() * 6) + 1)
-      const hits = sprintRoll.filter(roll => roll >= 5).length
-      const extraDistance = ['Dwarf', 'Troll'].includes(currentChar.metatype) ? hits : hits * 2
-
-      const updatedChars = [...combatCharacters]
-      updatedChars[currentCharacterIndex].position += extraDistance
-      setCombatCharacters(updatedChars)
-
-      const summary = `${currentChar.name} sprinted an extra ${extraDistance} meters!`
-      setActionLog(prev => [...prev, { summary, details: [] }])
-    } else if ((selectedComplexAction === 'FireWeapon' || selectedComplexAction === 'MeleeAttack') && selectedWeapons[0] && selectedTargets[0]) {
-      const weapon = selectedWeapons[0] as Weapon
-      const targetId = selectedTargets[0]
-      const target = combatCharacters.find(c => c.id === targetId)
-      if (target) {
-        const distance = Math.abs(currentChar.position - target.position)
-        const result = resolve_attack(currentChar, target, weapon, weapon.currentFireMode, distance)
-        
-        let summary = `${currentChar.name} attacked ${target.name} with ${weapon.name}`
-        if (result.criticalGlitch) {
-          summary += ` and suffered a critical glitch!`
-        } else if (result.glitch) {
-          summary += ` but glitched!`
-        } else if (result.damage_dealt > 0) {
-          summary += ` and dealt ${result.damage_dealt} damage.`
-        } else {
-          summary += ` but missed.`
-        }
-        
-        setActionLog(prev => [...prev, { summary, details: result.messages }])
-        
-        // Update characters with new damage values
-        const updatedChars = combatCharacters.map(char => 
-          char.id === currentChar.id ? { ...char, ...currentChar } :
-          char.id === target.id ? { ...char, ...target } :
-          char
-        )
-        setCombatCharacters(updatedChars)
-
-        if (check_combat_end(updatedChars)) {
-          setActionLog(prev => [...prev, { summary: "Combat has ended!", details: [] }])
-          // Handle end of combat
-        }
-      }
+  const handleSimpleActionsHandler = () => {
+    const { updatedCharacters, actionLog, combatEnded } = handleSimpleActions(combatCharacters, currentCharacterIndex, selectedSimpleActions, selectedWeapons, selectedTargets);
+    setCombatCharacters(updatedCharacters);
+    setActionLog(prev => [...prev, ...actionLog]);
+    if (combatEnded) {
+      endCombat();
+      return;
     }
-
-    clearInputs()
-    nextCharacter()
-  }
-
-  const handleSimpleActions = () => {
-    const currentChar = combatCharacters[currentCharacterIndex]
-
-    selectedSimpleActions.forEach((action, index) => {
-      if (action === 'FireRangedWeapon' && selectedWeapons[index] && selectedTargets[index]) {
-        const weapon = selectedWeapons[index] as Weapon
-        const targetId = selectedTargets[index]!
-        const target = combatCharacters.find(c => c.id === targetId)
-        if (target) {
-          const distance = Math.abs(currentChar.position - target.position)
-          const result = resolve_attack(currentChar, target, weapon, weapon.currentFireMode, distance)
-          const summary = `${currentChar.name} fired at ${target.name} with ${weapon.name} and dealt ${result.damage_dealt} damage.`
-          setActionLog(prev => [...prev, { summary, details: result.messages }])
-          
-          // Update characters with new damage values
-          const updatedChars = combatCharacters.map(char => 
-            char.id === currentChar.id ? { ...char, ...currentChar } :
-            char.id === target.id ? { ...char, ...target } :
-            char
-          )
-          setCombatCharacters(updatedChars)
-
-          if (check_combat_end(updatedChars)) {
-            setActionLog(prev => [...prev, { summary: "Combat has ended!", details: [] }])
-            // Handle end of combat
-          }
-        }
-      } else if (action === 'ReloadWeapon' && selectedWeapons[index]) {
-        const weapon = selectedWeapons[index] as Weapon
-        const updatedChars = [...combatCharacters]
-        const weaponIndex = updatedChars[currentCharacterIndex].weapons.findIndex(w => w.name === weapon.name)
-        if (weaponIndex !== -1) {
-          updatedChars[currentCharacterIndex].weapons[weaponIndex].ammoCount = weapon.ammoCount
-          setCombatCharacters(updatedChars)
-          const summary = `${currentChar.name} reloaded their ${weapon.name}.`
-          setActionLog(prev => [...prev, { summary, details: [] }])
-        }
-      } else if (action === 'TakeAim') {
-        const summary = `${currentChar.name} took aim.`
-        setActionLog(prev => [...prev, { summary, details: [] }])
-      } else if (action === 'TakeCover') {
-        const summary = `${currentChar.name} took cover.`
-        setActionLog(prev => [...prev, { summary, details: [] }])
-      } else if (action === 'CallShot') {
-        const summary = `${currentChar.name} called a shot.`
-        setActionLog(prev => [...prev, { summary, details: [] }])
-      } else if (action === 'ChangeFireMode') {
-        const summary = `${currentChar.name} changed fire mode.`
-        setActionLog(prev => [...prev, { summary, details: [] }])
-      }
-    })
-
-    clearInputs()
-    nextCharacter()
-  }
+    clearInputs();
+    nextCharacter();
+  };
 
   const handleFreeActionSelection = (action: 'CallShot' | 'ChangeFireMode') => {
     setSelectedFreeAction(action === selectedFreeAction ? null : action)
   }
 
-  const handleFireModeChange = (weaponIndex: number, newFireMode: FireMode) => {
-    const updatedChars = [...combatCharacters]
-    updatedChars[currentCharacterIndex].weapons[weaponIndex].currentFireMode = newFireMode
-    setCombatCharacters(updatedChars)
-    setActionLog(prev => [...prev, { summary: `${combatCharacters[currentCharacterIndex].name} changed fire mode of ${updatedChars[currentCharacterIndex].weapons[weaponIndex].name} to ${newFireMode}`, details: [] }])
-  }
+  const handleFireModeChangeHandler = (weaponIndex: number, newFireMode: FireMode) => {
+    const { updatedCharacters, actionLog } = handleFireModeChange(combatCharacters, currentCharacterIndex, weaponIndex, newFireMode);
+    setCombatCharacters(updatedCharacters);
+    setActionLog(prev => [...prev, actionLog]);
+  };
 
-  const checkAndUpdateCharacterStatus = (character: CombatCharacter): string[] => {
-    const statusChanges: string[] = []
-    const physicalDamageChange = character.physical_damage - character.previousPhysicalDamage
-    const stunDamageChange = character.stun_damage - character.previousStunDamage
-
-    if (physicalDamageChange > 0) {
-      statusChanges.push(`${character.name} took ${physicalDamageChange} physical damage.`)
+  const displayRoundSummaryHandler = () => {
+    const { updatedCharacters, roundSummary, combatEnded } = displayRoundSummary(combatCharacters, roundNumber);
+    setCombatCharacters(updatedCharacters);
+    setActionLog(prev => [...prev, { summary: `Round ${roundNumber} Summary`, details: roundSummary }]);
+    setRoundNumber(roundNumber + 1);
+    if (combatEnded) {
+      endCombat();
     }
-    if (stunDamageChange > 0) {
-      statusChanges.push(`${character.name} took ${stunDamageChange} stun damage.`)
-    }
-
-    const maxPhysicalHealth = calculateMaxPhysicalHealth(character.attributes.body)
-    const maxStunHealth = calculateMaxStunHealth(character.attributes.willpower)
-
-    const wasAlive = character.is_alive
-    const wasConscious = character.is_conscious
-
-    character.is_alive = isCharacterAlive(character.physical_damage, maxPhysicalHealth)
-    character.is_conscious = isCharacterConscious(character.stun_damage, maxStunHealth, character.physical_damage, maxPhysicalHealth)
-
-    if (wasAlive && !character.is_alive) {
-      statusChanges.push(`${character.name} has died!`)
-    } else if (wasConscious && !character.is_conscious) {
-      statusChanges.push(`${character.name} has been knocked unconscious!`)
-    }
-
-    character.previousPhysicalDamage = character.physical_damage
-    character.previousStunDamage = character.stun_damage
-
-    return statusChanges
-  }
-
-  const displayRoundSummary = () => {
-    const roundSummary: string[] = [`End of Round ${roundNumber}`]
-    let combatEnded = false
-
-    const updatedChars = combatCharacters.map(char => {
-      const statusChanges = checkAndUpdateCharacterStatus(char)
-      return { ...char, statusChanges }
-    })
-
-    updatedChars.forEach(char => {
-      if (char.statusChanges.length > 0) {
-        roundSummary.push(...char.statusChanges)
-      }
-    })
-
-    const faction1Conscious = updatedChars.some(char => char.faction === 'faction1' && char.is_conscious)
-    const faction2Conscious = updatedChars.some(char => char.faction === 'faction2' && char.is_conscious)
-
-    if (!faction1Conscious && !faction2Conscious) {
-      roundSummary.push("Both factions are incapacitated. The combat ends in a draw.")
-      combatEnded = true
-    } else if (!faction1Conscious) {
-      roundSummary.push("Faction 2 wins! All members of Faction 1 are incapacitated.")
-      combatEnded = true
-    } else if (!faction2Conscious) {
-      roundSummary.push("Faction 1 wins! All members of Faction 2 are incapacitated.")
-      combatEnded = true
-    }
-
-    setActionLog(prev => [...prev, { summary: `Round ${roundNumber} Summary`, details: roundSummary }])
-    setCombatCharacters(updatedChars)
-    setRoundNumber(roundNumber + 1)
-
-    return combatEnded
-  }
+  };
 
   const clearInputs = () => {
     setSelectedActionType(null)
@@ -671,13 +293,11 @@ export function ShadowrunArena() {
     setSelectedFreeAction(null)
   }
 
-  const calculateRoundWins = (results: MatchResult[]) => {
-    const roundWins = { 'Faction 1': 0, 'Faction 2': 0, 'Draw': 0 };
-    results.forEach(result => {
-      roundWins[result.winner as keyof typeof roundWins]++;
-    });
-    return roundWins;
-  };
+  const toggleSimulationDetails = (index: number) => {
+    setExpandedSimulations(prev => 
+      prev.includes(index) ? prev.filter(i => i !== index) : [...prev, index]
+    )
+  }
 
   const handleAddToFaction = (characterId: string, faction: 'faction1' | 'faction2') => {
     addToFaction(characterId, faction, faction1, setFaction1, faction2, setFaction2, setFactionModifiers);
@@ -758,7 +378,7 @@ export function ShadowrunArena() {
               </div>
             </CardContent>
             <CardFooter>
-              <Button onClick={startNewCombat} disabled={faction1.length === 0 || faction2.length === 0 || isCombatActive}>
+              <Button onClick={startNewCombatHandler} disabled={faction1.length === 0 || faction2.length === 0 || isCombatActive}>
                 <Swords className="mr-2 h-4 w-4" /> New Combat
               </Button>
             </CardFooter>
@@ -868,7 +488,7 @@ export function ShadowrunArena() {
                           {selectedSimpleActions[index] === 'ChangeFireMode' && selectedWeapons[index] && (
                             <Select
                               value={selectedWeapons[index]?.currentFireMode || ''}
-                              onValueChange={(value) => handleFireModeChange(combatCharacters[currentCharacterIndex].weapons.findIndex(w => w.name === selectedWeapons[index]?.name), value as FireMode)}
+                              onValueChange={(value) => handleFireModeChangeHandler(combatCharacters[currentCharacterIndex].weapons.findIndex(w => w.name === selectedWeapons[index]?.name), value as FireMode)}
                             >
                               <SelectTrigger>
                                 <SelectValue placeholder="Select Fire Mode" />
@@ -949,7 +569,7 @@ export function ShadowrunArena() {
                       <div className="mt-2">
                         <Select onValueChange={(value) => {
                           const [weaponIndex, newFireMode] = value.split('|')
-                          handleFireModeChange(parseInt(weaponIndex), newFireMode as FireMode)
+                          handleFireModeChangeHandler(parseInt(weaponIndex), newFireMode as FireMode)
                         }}>
                           <SelectTrigger>
                             <SelectValue placeholder="Select Weapon and New Fire Mode" />
@@ -995,11 +615,11 @@ export function ShadowrunArena() {
                   </div>
                   <Button onClick={() => {
                     if (selectedActionType === 'Simple') {
-                      handleSimpleActions()
+                      handleSimpleActionsHandler()
                     } else if (selectedActionType === 'Complex') {
-                      handleComplexAction()
+                      handleComplexActionHandler()
                     } else if (movementDistance > 0) {
-                      handleMovement()
+                      handleMovementHandler()
                     } else if (selectedFreeAction) {
                       // Handle free action here
                       setActionLog(prev => [...prev, { summary: `${combatCharacters[currentCharacterIndex].name} performed a ${selectedFreeAction} action.`, details: [] }])
