@@ -6,8 +6,8 @@ export const initialCharacter: Omit<Character, 'faction' | 'current_initiative' 
   name: '',
   metatype: 'Human',
   attributes: {
-    body: 1, agility: 1, reaction: 1, strength: 1,
-    willpower: 1, logic: 1, intuition: 1, charisma: 1,
+    body: 3, agility: 3, reaction: 3, strength: 3,
+    willpower: 3, logic: 3, intuition: 3, charisma: 3,
     essence: 6
   },
   skills: { firearms: 0, 'close combat': 0, running: 0, armor: 0 },

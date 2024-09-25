@@ -44,7 +44,7 @@ export const createCombatCharacter = (character: Character, faction: 'faction1' 
     previousPhysicalDamage: 0,
     previousStunDamage: 0,
     movement_remaining: 0,
-    physicalLimit: calculatePhysicalLimit(character.attributes),
+    physicalLimit: calculatePhysicalLimit(character.attributes.strength, character.attributes.body, character.attributes.reaction),
     mentalLimit: calculateMentalLimit(character.attributes),
     socialLimit: calculateSocialLimit(character.attributes),
     calculate_wound_modifier: function (): number {

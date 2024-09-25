@@ -83,6 +83,7 @@ export function ShadowrunArena() {
   const [simulationInitialDistance, setSimulationInitialDistance] = useState(10)
   const [remainingMovement, setRemainingMovement] = useState(0);
   const [meleeRangeError, setMeleeRangeError] = useState<string | null>(null);
+  const [isRunning, setIsRunning] = useState(false);
 
   // Load characters from localStorage only once when the component mounts
   useEffect(() => {
@@ -255,12 +256,18 @@ export function ShadowrunArena() {
       return
     }
 
-    const { updatedCharacters, actionLog, remainingDistance } = handleMovement(combatCharacters, currentCharacterIndex, movementDistance, movementDirection);
+    const { updatedCharacters, actionLog, remainingDistance } = handleMovement(
+      combatCharacters,
+      currentCharacterIndex,
+      movementDistance,
+      movementDirection,
+      isRunning
+    );
     setCombatCharacters(updatedCharacters);
     setActionLog(prev => [...prev, actionLog]);
     setRemainingMovement(remainingDistance);
+    setIsRunning(false); // Reset running state after movement
     clearInputs();
-    // Don't call nextCharacter() here, as movement is part of the turn
   };
 
   const handleComplexActionHandler = () => {
@@ -321,6 +328,11 @@ export function ShadowrunArena() {
 
   const handleRemoveFromFaction = (characterId: string, faction: 'faction1' | 'faction2') => {
     removeFromFaction(characterId, faction, setFaction1, setFaction2, setFactionModifiers);
+  };
+
+  const handleRunAction = () => {
+    setIsRunning(true);
+    toast.info("Running activated. Movement distance doubled for this turn.");
   };
 
   return (
@@ -580,6 +592,13 @@ export function ShadowrunArena() {
                       >
                         Change Fire Mode
                       </Button>
+                      <Button
+                        variant={isRunning ? 'default' : 'outline'}
+                        onClick={handleRunAction}
+                        disabled={isRunning}
+                      >
+                        <Play className="mr-2 h-4 w-4" /> Run
+                      </Button>
                     </div>
                     {selectedFreeAction === 'ChangeFireMode' && (
                       <div className="mt-2">
@@ -605,6 +624,9 @@ export function ShadowrunArena() {
                         </Select>
                       </div>
                     )}
+                    {isRunning && (
+                      <p className="mt-2">Character is running. Movement distance doubled for this turn.</p>
+                    )}
                   </div>
                   <div>
                     <h5 className="font-semibold">Movement</h5>
@@ -624,9 +646,9 @@ export function ShadowrunArena() {
                         value={movementDistance}
                         onChange={(e) => setMovementDistance(parseInt(e.target.value))}
                         min="0"
-                        max={combatCharacters[currentCharacterIndex].attributes.agility * 2}
+                        max={combatCharacters[currentCharacterIndex].attributes.agility * (isRunning ? 4 : 2)}
                       />
-                      <span>meters</span>
+                      <span>meters (max: {combatCharacters[currentCharacterIndex].attributes.agility * (isRunning ? 4 : 2)})</span>
                       <Button onClick={handleMovementHandler}>Move</Button>
                     </div>
                     {remainingMovement > 0 && (
@@ -639,10 +661,12 @@ export function ShadowrunArena() {
                     } else if (selectedActionType === 'Complex') {
                       handleComplexActionHandler()
                     } else if (selectedFreeAction) {
-                      // Handle free action here
                       setActionLog(prev => [...prev, { summary: `${combatCharacters[currentCharacterIndex].name} performed a ${selectedFreeAction} action.`, details: [] }])
                       clearInputs()
                       nextCharacter()
+                    } else if (isRunning) {
+                      setActionLog(prev => [...prev, { summary: `${combatCharacters[currentCharacterIndex].name} prepared to run.`, details: [] }])
+                      // Don't clear inputs or move to next character, as running is a free action
                     } else {
                       toast.error('Please select an action type, enter a movement distance, or choose a free action')
                     }

@@ -138,19 +138,19 @@ export const handleMovement = (
   combatCharacters: CombatCharacter[],
   currentCharacterIndex: number,
   movementDistance: number,
-  movementDirection: 'Toward' | 'Away'
+  movementDirection: 'Toward' | 'Away',
+  isRunning: boolean = false
 ): {
   updatedCharacters: CombatCharacter[],
   actionLog: { summary: string, details: string[] },
   remainingDistance: number
 } => {
   const currentChar = combatCharacters[currentCharacterIndex];
-  const maxDistance = currentChar.attributes.agility * 2;
+  const baseMaxDistance = currentChar.attributes.agility * 2;
+  const maxDistance = isRunning ? baseMaxDistance * 2 : baseMaxDistance;
 
-  if (movementDistance > maxDistance) {
-    toast.error(`Maximum movement distance is ${maxDistance} meters`);
-    return { updatedCharacters: combatCharacters, actionLog: { summary: '', details: [] }, remainingDistance: 0 };
-  }
+  // Respect the user's input for movement distance
+  const actualMovementDistance = Math.min(movementDistance, maxDistance);
 
   const updatedChars = [...combatCharacters];
   const target = updatedChars.find(c => c.faction !== currentChar.faction && c.is_conscious);
@@ -163,22 +163,28 @@ export const handleMovement = (
   let newPosition = currentChar.position;
 
   if (movementDirection === 'Toward') {
-    newPosition += movementDistance;
+    newPosition += actualMovementDistance;
   } else {
-    newPosition -= movementDistance;
+    newPosition -= actualMovementDistance;
   }
 
   updatedChars[currentCharacterIndex].position = newPosition;
 
   const newDistance = Math.abs(newPosition - target.position);
   const actualMovement = Math.abs(initialDistance - newDistance);
-  const remainingDistance = movementDistance - actualMovement;
+  const remainingDistance = actualMovementDistance - actualMovement;
+
+  const movementType = isRunning ? "ran" : "moved";
 
   return {
     updatedCharacters: updatedChars,
     actionLog: { 
-      summary: `${currentChar.name} moved ${actualMovement} meters ${movementDirection.toLowerCase()} the opposing faction.`,
-      details: [`New distance to target: ${newDistance} meters`, `Remaining movement: ${remainingDistance} meters`]
+      summary: `${currentChar.name} ${movementType} ${actualMovement} meters ${movementDirection.toLowerCase()} the opposing faction.`,
+      details: [
+        `New distance to target: ${newDistance} meters`,
+        `Remaining movement: ${remainingDistance} meters`,
+        isRunning ? `Running used as a Free Action` : ''
+      ].filter(Boolean)
     },
     remainingDistance
   };
@@ -268,7 +274,8 @@ export const handleSimpleActions = (
   selectedSimpleActions: SimpleAction[],
   selectedWeapons: (Weapon | null)[],
   selectedTargets: (string | null)[],
-  remainingMovement: number
+  remainingMovement: number,
+  isRunning: boolean = false
 ): {
   updatedCharacters: CombatCharacter[],
   actionLog: { summary: string, details: string[] }[],
@@ -324,12 +331,15 @@ export const handleSimpleActions = (
   if (remainingMovement > 0) {
     const target = updatedChars.find(c => c.faction !== currentChar.faction && c.is_conscious);
     if (target) {
-      const direction = currentChar.position < target.position ? 1 : -1;
-      updatedChars[currentCharacterIndex].position += remainingMovement * direction;
-      actionLog.push({ 
-        summary: `${currentChar.name} moved ${remainingMovement} meters.`,
-        details: [`New position: ${updatedChars[currentCharacterIndex].position} meters`]
-      });
+      const { updatedCharacters, actionLog: movementLog } = handleMovement(
+        updatedChars,
+        currentCharacterIndex,
+        remainingMovement,
+        currentChar.position < target.position ? 'Toward' : 'Away',
+        isRunning
+      );
+      updatedChars = updatedCharacters;
+      actionLog.push(movementLog);
     }
   }
 

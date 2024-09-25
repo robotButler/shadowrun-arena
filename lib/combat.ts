@@ -1,6 +1,7 @@
 // combat.ts
 
 import { Weapon, Character, RoundResult, MatchResult } from './types';
+import { calculatePhysicalLimit } from './utils';
 
 // Utility functions
 function roll_d6(numDice: number): number[] {
@@ -96,14 +97,19 @@ function resolve_attack(attacker: Character, defender: Character, weapon: Weapon
         const { hits: attack_hits, ones: attack_ones, isGlitch, isCriticalGlitch } = count_hits_and_ones(attack_rolls);
         
         // Apply Physical Limit
-        const limited_attack_hits = Math.min(attack_hits, attacker.physicalLimit);
+        const physicalLimit = calculatePhysicalLimit(attacker.attributes.strength, attacker.attributes.body, attacker.attributes.reaction);
+        const limited_attack_hits = Math.min(attack_hits, physicalLimit);
         
         result.attack_rolls = attack_rolls;
         result.attacker_hits = limited_attack_hits;
         result.glitch = isGlitch;
         result.criticalGlitch = isCriticalGlitch;
 
-        result.messages.push(`Attack rolls: ${attack_rolls.join(', ')} (${attack_hits} hits, limited to ${limited_attack_hits} by Physical Limit, ${attack_ones} ones)`);
+        let limited_msg = ""
+        if (physicalLimit < attack_hits) {
+            limited_msg = ` , limited to ${limited_attack_hits} by Physical Limit of ${physicalLimit},`
+        }
+        result.messages.push(`Attack rolls: ${attack_rolls.join(', ')} (${attack_hits} hits${limited_msg} ${attack_ones} ones)`);
 
         if (isCriticalGlitch) {
             const stunDamage = Math.floor(Math.random() * 6) + 1;
@@ -184,14 +190,19 @@ function resolve_attack(attacker: Character, defender: Character, weapon: Weapon
         const { hits: attack_hits, ones: attack_ones, isGlitch, isCriticalGlitch } = count_hits_and_ones(attack_rolls);
         
         // Apply Physical Limit
-        const limited_attack_hits = Math.min(attack_hits, attacker.physicalLimit);
+        const physicalLimit = calculatePhysicalLimit(attacker.attributes.strength, attacker.attributes.body, attacker.attributes.reaction);
+        const limited_attack_hits = Math.min(attack_hits, physicalLimit);
         
         result.attack_rolls = attack_rolls;
         result.attacker_hits = limited_attack_hits;
         result.glitch = isGlitch;
         result.criticalGlitch = isCriticalGlitch;
 
-        result.messages.push(`Attack rolls: ${attack_rolls.join(', ')} (${attack_hits} hits, limited to ${limited_attack_hits} by Physical Limit, ${attack_ones} ones)`);
+        let limited_msg = ""
+        if (physicalLimit < attack_hits) {
+            limited_msg = ` , limited to ${limited_attack_hits} by Physical Limit of ${physicalLimit},`
+        }
+        result.messages.push(`Attack rolls: ${attack_rolls.join(', ')} (${attack_hits} hits${limited_msg} ${attack_ones} ones)`);
 
         if (isCriticalGlitch) {
             const stunDamage = Math.floor(Math.random() * 6) + 1;
