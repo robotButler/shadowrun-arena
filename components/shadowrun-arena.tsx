@@ -53,11 +53,6 @@ import { ActionLogEntry, SimulationResult, FactionSelector } from './MiscCompone
 import { CharacterManagement } from './CharacterManagement'
 import {
   runSingleSimulation,
-  createCombatCharacter,
-  simulateRound,
-  selectTarget,
-  updateCharacterStatus,
-  determineWinner,
   calculateRoundWins
 } from '../lib/combatSimulation'
 
@@ -68,7 +63,7 @@ export function ShadowrunArena() {
   const [combatResults, setCombatResults] = useState<MatchResult[]>([])
   const [simulations, setSimulations] = useState<number>(100)
   const [factionModifiers, setFactionModifiers] = useState<Record<string, number>>({})
-  const [expandedSimulations, setExpandedSimulations] = useState<number[]>([])
+  const [_, setExpandedSimulations] = useState<number[]>([])
   const [combatCharacters, setCombatCharacters] = useState<CombatCharacter[]>([])
   const [currentInitiativePhase, setCurrentInitiativePhase] = useState(0)
   const [currentCharacterIndex, setCurrentCharacterIndex] = useState(0)
@@ -309,16 +304,6 @@ export function ShadowrunArena() {
     setActionLog(prev => [...prev, actionLog]);
   };
 
-  const displayRoundSummaryHandler = () => {
-    const { updatedCharacters, roundSummary, combatEnded } = displayRoundSummary(combatCharacters, roundNumber);
-    setCombatCharacters(updatedCharacters);
-    setActionLog(prev => [...prev, { summary: `Round ${roundNumber} Summary`, details: roundSummary }]);
-    setRoundNumber(roundNumber + 1);
-    if (combatEnded) {
-      endCombat();
-    }
-  };
-
   const clearInputs = () => {
     setSelectedActionType(null)
     setSelectedSimpleActions([])
@@ -328,12 +313,6 @@ export function ShadowrunArena() {
     setMovementDistance(0)
     setMovementDirection('Toward')
     setSelectedFreeAction(null)
-  }
-
-  const toggleSimulationDetails = (index: number) => {
-    setExpandedSimulations(prev => 
-      prev.includes(index) ? prev.filter(i => i !== index) : [...prev, index]
-    )
   }
 
   const handleAddToFaction = (characterId: string, faction: 'faction1' | 'faction2') => {

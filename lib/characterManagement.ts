@@ -7,11 +7,15 @@ export const initialCharacter: Omit<Character, 'faction' | 'current_initiative' 
   metatype: 'Human',
   attributes: {
     body: 1, agility: 1, reaction: 1, strength: 1,
-    willpower: 1, logic: 1, intuition: 1, charisma: 1
+    willpower: 1, logic: 1, intuition: 1, charisma: 1,
+    essence: 6
   },
   skills: { firearms: 0, 'close combat': 0, running: 0, armor: 0 },
   weapons: [],
-  initiativeDice: 1
+  initiativeDice: 1,
+  physicalLimit: 0,
+  mentalLimit: 0,
+  socialLimit: 0
 }
 
 export const initialWeapon: Weapon = {

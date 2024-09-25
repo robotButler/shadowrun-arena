@@ -1,12 +1,14 @@
+// combatSimulation.ts
+
 import { Character, CombatCharacter, Weapon, MatchResult, RoundResult } from './types'
 import { roll_initiative, resolve_attack, check_combat_end, select_best_weapon, get_ideal_range } from './combat'
-import { calculateMaxPhysicalHealth, calculateMaxStunHealth, isCharacterAlive, isCharacterConscious } from './utils'
+import { calculateMaxPhysicalHealth, calculateMaxStunHealth, isCharacterAlive, isCharacterConscious, calculatePhysicalLimit, calculateMentalLimit, calculateSocialLimit } from './utils';
 import { calculateDistance } from './utils';
 
 const MELEE_RANGE = 2; // Melee range in meters
 
 function calculateRunningDistance(character: CombatCharacter): number {
-  return character.attributes.agility * 4;
+  return character.attributes.agility * 4; // Updated to running speed
 }
 
 function rollSprinting(character: CombatCharacter): number {
@@ -41,8 +43,28 @@ export const createCombatCharacter = (character: Character, faction: 'faction1' 
     total_damage_dealt: 0,
     previousPhysicalDamage: 0,
     previousStunDamage: 0,
-    calculate_wound_modifier: () => 0,
-    check_status: () => []
+    movement_remaining: 0,
+    physicalLimit: calculatePhysicalLimit(character.attributes),
+    mentalLimit: calculateMentalLimit(character.attributes),
+    socialLimit: calculateSocialLimit(character.attributes),
+    calculate_wound_modifier: function (): number {
+      const totalDamage = this.physical_damage + this.stun_damage;
+      const maxHealth = Math.max(calculateMaxPhysicalHealth(this.attributes.body) + calculateMaxStunHealth(this.attributes.willpower), 1);
+      return Math.floor((totalDamage / maxHealth) * 3);
+    },
+    check_status: function () {
+      const maxPhysicalHealth = calculateMaxPhysicalHealth(this.attributes.body);
+      const physicalOverflow = this.physical_damage - maxPhysicalHealth;
+      if (physicalOverflow > this.attributes.body) {
+        this.is_alive = false;
+        return [`${this.name} has died due to excessive physical damage.`];
+      }
+      if (this.stun_damage >= calculateMaxStunHealth(this.attributes.willpower)) {
+        this.is_conscious = false;
+        return [`${this.name} is unconscious due to stun damage.`];
+      }
+      return [];
+    }
   }
 }
 
@@ -67,6 +89,7 @@ export const simulateRound = (characters: CombatCharacter[]): RoundResult => {
   if (characters[0].current_initiative < 1) {
     characters.forEach(char => {
       char.current_initiative = char.initiative;
+      char.movement_remaining = calculateRunningDistance(char);
     });
     roundResult.messages.push("Initiative reset: All characters' initiatives have been reset to their initial values.");
   }
@@ -84,20 +107,22 @@ export const simulateRound = (characters: CombatCharacter[]): RoundResult => {
     let distance = calculateDistance(character.position, target.position)
 
     // Determine action based on distance and weapon type
-    if (distance > calculateRunningDistance(character) && (distance > MELEE_RANGE || weapon.type !== 'Melee')) {
+    if (distance > character.movement_remaining && (distance > MELEE_RANGE || weapon.type !== 'Melee')) {
       // Sprint (Complex Action)
       const sprintHits = rollSprinting(character);
       const moveDistance = calculateSprintingDistance(character, sprintHits);
       const direction = character.position < target.position ? 1 : -1;
       character.position += moveDistance * direction;
+      character.movement_remaining = 0;
       roundResult.messages.push(`${character.name} sprinted ${moveDistance} meters towards ${target.name}`);
     } else {
       // Run (Free Action) and perform Complex Action
       if (distance > MELEE_RANGE || weapon.type !== 'Melee') {
-        const runDistance = calculateRunningDistance(character);
+        const runDistance = Math.min(character.movement_remaining, distance - (weapon.type === 'Melee' ? MELEE_RANGE : 0));
         const direction = character.position < target.position ? 1 : -1;
-        character.position += Math.min(runDistance, distance - (weapon.type === 'Melee' ? MELEE_RANGE : 0)) * direction;
-        roundResult.messages.push(`${character.name} ran ${Math.min(runDistance, distance - (weapon.type === 'Melee' ? MELEE_RANGE : 0))} meters towards ${target.name}`);
+        character.position += runDistance * direction;
+        character.movement_remaining -= runDistance;
+        roundResult.messages.push(`${character.name} ran ${runDistance} meters towards ${target.name}`);
       }
 
       // Recalculate distance after running
@@ -105,7 +130,7 @@ export const simulateRound = (characters: CombatCharacter[]): RoundResult => {
 
       // Perform attack if in range
       if ((weapon.type === 'Melee' && distance <= MELEE_RANGE) || weapon.type !== 'Melee') {
-        const attackResult = resolve_attack(character, target, weapon, weapon.currentFireMode, distance)
+        const attackResult = resolve_attack(character, target, weapon, weapon.currentFireMode || 'SA', distance)
         roundResult.messages.push(...attackResult.messages)
         roundResult.damage_dealt += attackResult.damage_dealt
         roundResult.attack_rolls = attackResult.attack_rolls
@@ -113,13 +138,21 @@ export const simulateRound = (characters: CombatCharacter[]): RoundResult => {
         roundResult.resistance_rolls = attackResult.resistance_rolls
         roundResult.glitch = attackResult.glitch
         roundResult.criticalGlitch = attackResult.criticalGlitch
+
+        // Update ammo count
+        const bulletsFired = weapon.currentFireMode === 'BF' ? 3 : weapon.currentFireMode === 'FA' ? 6 : 1;
+        weapon.ammoCount -= bulletsFired;
+        if (weapon.ammoCount < 0) {
+          roundResult.messages.push(`${character.name}'s ${weapon.name} is out of ammo!`);
+        }
       } else {
         roundResult.messages.push(`${character.name} couldn't reach ${target.name} for melee attack`)
       }
     }
 
-    updateCharacterStatus(character)
-    updateCharacterStatus(target)
+    const characterStatusChanges = character.check_status();
+    const targetStatusChanges = target.check_status();
+    roundResult.status_changes.push(...characterStatusChanges, ...targetStatusChanges);
 
     character.current_initiative -= 10
 
@@ -130,15 +163,9 @@ export const simulateRound = (characters: CombatCharacter[]): RoundResult => {
 }
 
 export const selectTarget = (attacker: CombatCharacter, characters: CombatCharacter[]): CombatCharacter | null => {
-  return characters.find(c => c.faction !== attacker.faction && c.is_conscious) || null
-}
-
-export const updateCharacterStatus = (character: CombatCharacter) => {
-  const maxPhysicalHealth = calculateMaxPhysicalHealth(character.attributes.body)
-  const maxStunHealth = calculateMaxStunHealth(character.attributes.willpower)
-
-  character.is_alive = isCharacterAlive(character.physical_damage, maxPhysicalHealth)
-  character.is_conscious = isCharacterConscious(character.stun_damage, maxStunHealth, character.physical_damage, maxPhysicalHealth)
+  const enemies = characters.filter(c => c.faction !== attacker.faction && c.is_conscious);
+  enemies.sort((a, b) => calculateDistance(attacker.position, a.position) - calculateDistance(attacker.position, b.position));
+  return enemies[0] || null;
 }
 
 export const determineWinner = (characters: CombatCharacter[]): string => {

@@ -1,3 +1,5 @@
+// combatInterface.ts
+
 import { toast } from 'react-toastify';
 import {
   roll_initiative,
@@ -70,6 +72,7 @@ export const createCombatCharacter = (
   initiative: 0,
   position,
   current_initiative: 0,
+  movement_remaining: 0,
   cumulative_recoil: 0,
   wound_modifier: 0,
   situational_modifiers: situationalModifiers,
@@ -228,7 +231,7 @@ export const handleComplexAction = (
         }
       }
 
-      const result = resolve_attack(currentChar, target, selectedWeapon, selectedWeapon.currentFireMode, distance);
+      const result = resolve_attack(currentChar, target, selectedWeapon, selectedWeapon.currentFireMode ?? undefined, distance);
       
       actionLog.summary = `${currentChar.name} attacked ${target.name} with ${selectedWeapon.name}`;
       if (result.criticalGlitch) {
@@ -283,7 +286,7 @@ export const handleSimpleActions = (
       const target = combatCharacters.find(c => c.id === targetId);
       if (target) {
         const distance = Math.abs(currentChar.position - target.position);
-        const result = resolve_attack(currentChar, target, weapon, weapon.currentFireMode, distance);
+        const result = resolve_attack(currentChar, target, weapon, weapon.currentFireMode ?? 'SS', distance);
         const summary = `${currentChar.name} fired at ${target.name} with ${weapon.name} and dealt ${result.damage_dealt} damage.`;
         actionLog.push({ summary, details: result.messages });
         

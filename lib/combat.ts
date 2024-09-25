@@ -48,20 +48,10 @@ function calculate_recoil(attacker: Character, weapon: Weapon, fire_mode: string
     }
     // Calculate recoil penalty
     let recoil_penalty = attacker.cumulative_recoil + bullets_fired - 1 - weapon.recoilComp;
-    recoil_penalty = -Math.max(recoil_penalty, 0); // Penalty is negative
+    recoil_penalty = Math.max(recoil_penalty, 0); // Penalty is negative
     // Update cumulative recoil
     attacker.cumulative_recoil += bullets_fired - 1;
     return recoil_penalty;
-}
-
-function calculate_recoil_penalty(fire_mode: string): number {
-    let bullets_after_first = 0;
-    if (fire_mode === 'BF') {
-        bullets_after_first = 2; // BF fires 3 bullets, so 2 after first
-    } else if (fire_mode === 'FA') {
-        bullets_after_first = 5; // FA fires 6 bullets, so 5 after first
-    }
-    return bullets_after_first;
 }
 
 function get_range_modifier(weapon_type: string, distance: number): number {
@@ -104,12 +94,16 @@ function resolve_attack(attacker: Character, defender: Character, weapon: Weapon
 
         const attack_rolls = roll_d6(total_attack_pool);
         const { hits: attack_hits, ones: attack_ones, isGlitch, isCriticalGlitch } = count_hits_and_ones(attack_rolls);
+        
+        // Apply Physical Limit
+        const limited_attack_hits = Math.min(attack_hits, attacker.physicalLimit);
+        
         result.attack_rolls = attack_rolls;
-        result.attacker_hits = attack_hits;
+        result.attacker_hits = limited_attack_hits;
         result.glitch = isGlitch;
         result.criticalGlitch = isCriticalGlitch;
 
-        result.messages.push(`Attack rolls: ${attack_rolls.join(', ')} (${attack_hits} hits, ${attack_ones} ones)`);
+        result.messages.push(`Attack rolls: ${attack_rolls.join(', ')} (${attack_hits} hits, limited to ${limited_attack_hits} by Physical Limit, ${attack_ones} ones)`);
 
         if (isCriticalGlitch) {
             const stunDamage = Math.floor(Math.random() * 6) + 1;
@@ -134,15 +128,16 @@ function resolve_attack(attacker: Character, defender: Character, weapon: Weapon
         result.messages.push(`Defense rolls: ${defense_rolls.join(', ')} (${defense_hits} hits)`);
 
         // Calculate net hits
-        const net_hits = attack_hits - defense_hits;
-        result.messages.push(`Net hits: ${attack_hits} - ${defense_hits} = ${net_hits}`);
+        const net_hits = limited_attack_hits - defense_hits;
+        result.messages.push(`Net hits: ${limited_attack_hits} - ${defense_hits} = ${net_hits}`);
         if (net_hits <= 0) {
             result.messages.push("Attack missed.");
             return result;
         }
 
         // Calculate total damage
-        const base_damage = Number(weapon.damage) + attacker.attributes.strength;
+        // Assume the weapon damage value already includes the strength bonus
+        const base_damage = parseInt(weapon.damage);
         const total_damage = base_damage + net_hits;
         result.messages.push(`Damage: Base (${base_damage}) + Net hits (${net_hits}) = Total damage (${total_damage})`);
 
@@ -187,12 +182,16 @@ function resolve_attack(attacker: Character, defender: Character, weapon: Weapon
 
         const attack_rolls = roll_d6(total_attack_pool);
         const { hits: attack_hits, ones: attack_ones, isGlitch, isCriticalGlitch } = count_hits_and_ones(attack_rolls);
+        
+        // Apply Physical Limit
+        const limited_attack_hits = Math.min(attack_hits, attacker.physicalLimit);
+        
         result.attack_rolls = attack_rolls;
-        result.attacker_hits = attack_hits;
+        result.attacker_hits = limited_attack_hits;
         result.glitch = isGlitch;
         result.criticalGlitch = isCriticalGlitch;
 
-        result.messages.push(`Attack rolls: ${attack_rolls.join(', ')} (${attack_hits} hits, ${attack_ones} ones)`);
+        result.messages.push(`Attack rolls: ${attack_rolls.join(', ')} (${attack_hits} hits, limited to ${limited_attack_hits} by Physical Limit, ${attack_ones} ones)`);
 
         if (isCriticalGlitch) {
             const stunDamage = Math.floor(Math.random() * 6) + 1;
@@ -224,15 +223,15 @@ function resolve_attack(attacker: Character, defender: Character, weapon: Weapon
         result.messages.push(`Defense rolls: ${defense_rolls.join(', ')} (${defense_hits} hits)`);
 
         // Calculate net hits
-        const net_hits = attack_hits - defense_hits;
-        result.messages.push(`Net hits: ${attack_hits} - ${defense_hits} = ${net_hits}`);
+        const net_hits = limited_attack_hits - defense_hits;
+        result.messages.push(`Net hits: ${limited_attack_hits} - ${defense_hits} = ${net_hits}`);
         if (net_hits <= 0) {
             result.messages.push("Attack missed.");
             return result;
         }
 
         // Calculate total damage
-        const base_damage = Number(weapon.damage);
+        const base_damage = parseInt(weapon.damage);
         const total_damage = base_damage + net_hits;
         result.messages.push(`Damage: Base (${base_damage}) + Net hits (${net_hits}) = Total damage (${total_damage})`);
 
@@ -266,8 +265,6 @@ function resolve_attack(attacker: Character, defender: Character, weapon: Weapon
             result.messages.push(`${defender.name} takes ${damage_taken} ${weapon.damageType} damage.`);
         }
 
-        // Update cumulative recoil
-        attacker.cumulative_recoil += calculate_recoil_penalty(fire_mode);
     }
 
     return result;
@@ -335,7 +332,6 @@ export {
     count_hits_and_ones,
     roll_initiative,
     calculate_recoil,
-    calculate_recoil_penalty,
     get_range_modifier,
     resolve_attack,
     apply_damage,

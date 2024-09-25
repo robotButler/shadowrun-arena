@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
+import { Attribute } from './types'  // Add this import
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -29,4 +30,16 @@ export function isCharacterConscious(stunDamage: number, maxStunHealth: number, 
  */
 export function calculateDistance(position1: number, position2: number): number {
   return Math.abs(position1 - position2);
+}
+
+export function calculatePhysicalLimit(attributes: Record<Attribute, number>): number {
+  return Math.ceil((attributes.strength * 2 + attributes.body + attributes.reaction) / 3);
+}
+
+export function calculateMentalLimit(attributes: Record<Attribute, number>): number {
+  return Math.ceil((attributes.logic * 2 + attributes.intuition + attributes.willpower) / 3);
+}
+
+export function calculateSocialLimit(attributes: Record<Attribute, number>): number {
+  return Math.ceil((attributes.charisma * 2 + attributes.willpower + attributes.essence) / 3);
 }

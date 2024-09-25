@@ -1,5 +1,5 @@
 // Basic types
-export type Attribute = 'body' | 'agility' | 'reaction' | 'strength' | 'willpower' | 'logic' | 'intuition' | 'charisma'
+export type Attribute = 'body' | 'agility' | 'reaction' | 'strength' | 'willpower' | 'logic' | 'intuition' | 'charisma' | 'essence'
 export type Skill = 'firearms' | 'close combat' | 'running' | 'armor'
 export type FireMode = 'SS' | 'SA' | 'BF' | 'FA'
 export type Metatype = 'Human' | 'Elf' | 'Ork' | 'Dwarf' | 'Troll'
@@ -17,7 +17,7 @@ export interface Weapon {
   recoilComp: number
   accuracy: number
   fireModes: FireMode[]
-  currentFireMode: FireMode
+  currentFireMode: FireMode | null
   ammoCount: number
   reach: number
 }
@@ -41,6 +41,9 @@ export interface Character {
   is_conscious: boolean
   is_alive: boolean
   total_damage_dealt: number
+  physicalLimit: number
+  mentalLimit: number
+  socialLimit: number
   calculate_wound_modifier: () => number
   check_status: () => string[]
 }
@@ -51,6 +54,7 @@ export interface CombatCharacter extends Character {
   position: number
   previousPhysicalDamage: number
   previousStunDamage: number
+  movement_remaining: number  // Add this line
 }
 
 // Combat result interfaces
