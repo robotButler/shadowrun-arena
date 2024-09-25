@@ -108,6 +108,8 @@ export const updateInitiative = (
       highestInitiative = char.current_initiative;
       nextCharacterIndex = index;
     }
+    // Reset movement_remaining at the start of each character's turn
+    char.movement_remaining = 0;
     return char;
   });
 
@@ -116,6 +118,8 @@ export const updateInitiative = (
   if (highestInitiative < 1) {
     updatedChars.forEach(char => {
       char.current_initiative = initialInitiatives[char.id];
+      // Also reset movement_remaining when initiative is reset
+      char.movement_remaining = 0;
     });
     highestInitiative = Math.max(...updatedChars.map(char => char.current_initiative));
     nextCharacterIndex = updatedChars.findIndex(char => char.current_initiative === highestInitiative && char.is_conscious);
@@ -149,8 +153,9 @@ export const handleMovement = (
   const baseMaxDistance = currentChar.attributes.agility * 2;
   const maxDistance = isRunning ? baseMaxDistance * 2 : baseMaxDistance;
 
-  // Respect the user's input for movement distance
-  const actualMovementDistance = Math.min(movementDistance, maxDistance);
+  // Check if the character has already moved this turn
+  const availableMovement = Math.max(0, maxDistance - currentChar.movement_remaining);
+  const actualMovementDistance = Math.min(movementDistance, availableMovement);
 
   const updatedChars = [...combatCharacters];
   const target = updatedChars.find(c => c.faction !== currentChar.faction && c.is_conscious);
@@ -162,17 +167,20 @@ export const handleMovement = (
   const initialDistance = Math.abs(currentChar.position - target.position);
   let newPosition = currentChar.position;
 
-  if (movementDirection === 'Toward') {
-    newPosition += actualMovementDistance;
-  } else {
+  // Adjust movement direction based on relative positions
+  const moveToward = (currentChar.position > target.position) === (movementDirection === 'Toward');
+  if (moveToward) {
     newPosition -= actualMovementDistance;
+  } else {
+    newPosition += actualMovementDistance;
   }
 
   updatedChars[currentCharacterIndex].position = newPosition;
+  updatedChars[currentCharacterIndex].movement_remaining += actualMovementDistance;
 
   const newDistance = Math.abs(newPosition - target.position);
   const actualMovement = Math.abs(initialDistance - newDistance);
-  const remainingDistance = actualMovementDistance - actualMovement;
+  const remainingDistance = maxDistance - updatedChars[currentCharacterIndex].movement_remaining;
 
   const movementType = isRunning ? "ran" : "moved";
 

@@ -84,6 +84,7 @@ export function ShadowrunArena() {
   const [remainingMovement, setRemainingMovement] = useState(0);
   const [meleeRangeError, setMeleeRangeError] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
+  const [movementRemaining, setMovementRemaining] = useState(0);
 
   // Load characters from localStorage only once when the component mounts
   useEffect(() => {
@@ -265,9 +266,11 @@ export function ShadowrunArena() {
     );
     setCombatCharacters(updatedCharacters);
     setActionLog(prev => [...prev, actionLog]);
-    setRemainingMovement(remainingDistance);
+    setMovementRemaining(remainingDistance);
     setIsRunning(false); // Reset running state after movement
-    clearInputs();
+    
+    // Update the movement distance dropdown
+    setMovementDistance(0);
   };
 
   const handleComplexActionHandler = () => {
@@ -333,6 +336,39 @@ export function ShadowrunArena() {
   const handleRunAction = () => {
     setIsRunning(true);
     toast.info("Running activated. Movement distance doubled for this turn.");
+  };
+
+  const getAvailableMovementDistances = () => {
+    const currentChar = combatCharacters[currentCharacterIndex];
+    const maxDistance = currentChar.attributes.agility * (isRunning ? 4 : 2);
+    const availableMovement = maxDistance - currentChar.movement_remaining;
+    
+    if (availableMovement <= 0) {
+      return [];
+    }
+
+    const opposingChars = combatCharacters.filter(c => c.faction !== currentChar.faction && c.is_conscious);
+    if (opposingChars.length === 0) {
+      return [];
+    }
+
+    const closestOpponent = opposingChars.reduce((closest, current) => 
+      Math.abs(current.position - currentChar.position) < Math.abs(closest.position - currentChar.position) ? current : closest
+    );
+
+    const isMovingToward = (movementDirection === 'Toward') === (currentChar.position < closestOpponent.position);
+    
+    let availableDistances = [];
+    for (let i = 1; i <= availableMovement; i++) {
+      const newPosition = isMovingToward ? currentChar.position + i : currentChar.position - i;
+      
+      // Check if this new position would place the character on top of an opponent
+      if (!opposingChars.some(opponent => opponent.position === newPosition)) {
+        availableDistances.push(i);
+      }
+    }
+
+    return availableDistances;
   };
 
   return (
@@ -631,8 +667,11 @@ export function ShadowrunArena() {
                   <div>
                     <h5 className="font-semibold">Movement</h5>
                     <div className="flex items-center space-x-2">
-                      <Select onValueChange={(value) => setMovementDirection(value as 'Toward' | 'Away')}>
-                        <SelectTrigger>
+                      <Select 
+                        defaultValue="Toward"
+                        onValueChange={(value) => setMovementDirection(value as 'Toward' | 'Away')}
+                      >
+                        <SelectTrigger className="w-[180px]">
                           <SelectValue placeholder="Select direction" />
                         </SelectTrigger>
                         <SelectContent>
@@ -640,19 +679,31 @@ export function ShadowrunArena() {
                           <SelectItem value="Away">Away</SelectItem>
                         </SelectContent>
                       </Select>
-                      <Input
-                        type="number"
-                        placeholder="Distance"
-                        value={movementDistance}
-                        onChange={(e) => setMovementDistance(parseInt(e.target.value))}
-                        min="0"
-                        max={combatCharacters[currentCharacterIndex].attributes.agility * (isRunning ? 4 : 2)}
-                      />
-                      <span>meters (max: {combatCharacters[currentCharacterIndex].attributes.agility * (isRunning ? 4 : 2)})</span>
-                      <Button onClick={handleMovementHandler}>Move</Button>
+                      <Select
+                        value={movementDistance.toString()}
+                        onValueChange={(value) => setMovementDistance(parseInt(value))}
+                      >
+                        <SelectTrigger className="w-[180px]">
+                          <SelectValue placeholder="Select distance" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {getAvailableMovementDistances().map((distance) => (
+                            <SelectItem key={distance} value={distance.toString()}>
+                              {distance}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Label>Meters</Label>
+                      <Button 
+                        onClick={handleMovementHandler}
+                        disabled={getAvailableMovementDistances().length === 0}
+                      >
+                        Move
+                      </Button>
                     </div>
-                    {remainingMovement > 0 && (
-                      <p>Remaining movement: {remainingMovement} meters</p>
+                    {movementRemaining > 0 && (
+                      <p>Remaining movement: {movementRemaining} meters</p>
                     )}
                   </div>
                   <Button onClick={() => {
