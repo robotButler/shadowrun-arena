@@ -49,13 +49,20 @@ export interface Character {
   check_status: () => string[]
 }
 
+// Add this new type definition
+export type Vector = {
+  x: number;
+  y: number;
+};
+
+// Update the CombatCharacter interface
 export interface CombatCharacter extends Character {
   faction: 'faction1' | 'faction2'
   initiative: number
-  position: number
+  position: Vector  // Changed from number to Vector
   previousPhysicalDamage: number
   previousStunDamage: number
-  movement_remaining: number  // Add this line
+  movement_remaining: number
 }
 
 // Combat result interfaces

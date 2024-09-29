@@ -17,6 +17,7 @@ import {
   FireMode,
   Character
 } from './types';
+import { GameMap } from './map';
 
 const MELEE_RANGE = 2; // Melee range in meters
 

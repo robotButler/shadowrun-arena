@@ -25,11 +25,12 @@ import {
   Character,
   CombatCharacter,
   Weapon,
-  FireMode
+  FireMode,
+  Vector
 } from '../lib/types'
 import { FactionSelector } from './MiscComponents'
 import { ActionLogEntry } from './MiscComponents'
-import { Vector, GameMap, generate_map } from '../lib/map'
+import { GameMap, generate_map } from '../lib/map'
 import { MapDisplay } from './MapDisplay'
 
 export function CombatTab({
@@ -91,7 +92,7 @@ export function CombatTab({
       toast.info('Please generate and accept a map before starting combat');
       return;
     }
-    const result = startNewCombat(faction1, faction2, characters, factionModifiers, gameMap, placedCharacters);
+    const result = startNewCombat(faction1, faction2, characters, factionModifiers, gameMap);
     setCombatCharacters(result.combatCharacters);
     setInitialInitiatives(result.initialInitiatives);
     setCurrentInitiativePhase(result.currentInitiativePhase);
@@ -332,16 +333,19 @@ export function CombatTab({
     }
 
     const closestOpponent = opposingChars.reduce((closest, current) => 
-      Math.abs(current.position - currentChar.position) < Math.abs(closest.position - currentChar.position) ? current : closest
+      calculateDistance(current.position, currentChar.position) < calculateDistance(closest.position, currentChar.position) ? current : closest
     );
 
-    const isMovingToward = (movementDirection === 'Toward') === (currentChar.position < closestOpponent.position);
+    const isMovingToward = (movementDirection === 'Toward') === (calculateDistance(currentChar.position, closestOpponent.position) > 0);
     
     let availableDistances = [];
     for (let i = 1; i <= availableMovement; i++) {
-      const newPosition = isMovingToward ? currentChar.position + i : currentChar.position - i;
+      const newPosition = {
+        x: isMovingToward ? currentChar.position.x + (closestOpponent.position.x - currentChar.position.x) / Math.abs(closestOpponent.position.x - currentChar.position.x) * i : currentChar.position.x,
+        y: isMovingToward ? currentChar.position.y + (closestOpponent.position.y - currentChar.position.y) / Math.abs(closestOpponent.position.y - currentChar.position.y) * i : currentChar.position.y
+      };
       
-      if (!opposingChars.some(opponent => opponent.position === newPosition)) {
+      if (!opposingChars.some(opponent => opponent.position.x === newPosition.x && opponent.position.y === newPosition.y)) {
         availableDistances.push(i);
       }
     }
@@ -357,29 +361,25 @@ export function CombatTab({
     setIsMapAccepted(true);
     setShowMapGeneration(false);
     toast.success("Map accepted!");
-    startNewCombatHandler(placedCharacters); // Pass placed characters to combat start
+    startNewCombatHandler(placedCharacters);
   };
 
   const handleMapCellClick = (position: Vector) => {
     if (!placingCharacter || !gameMap) return;
     
-    // Check if the cell is empty
     if (gameMap.cells[position.y * gameMap.width + position.x] !== 0) {
       toast.error("This cell is not empty. Please choose an empty cell.");
       return;
     }
 
-    // Check if the character is already placed
     const existingIndex = placedCharacters.findIndex(pc => pc.character.id === placingCharacter.id);
     if (existingIndex !== -1) {
-      // Update the position if already placed
       setPlacedCharacters(prev => [
         ...prev.slice(0, existingIndex),
         { character: placingCharacter, position },
         ...prev.slice(existingIndex + 1)
       ]);
     } else {
-      // Add new placement
       setPlacedCharacters(prev => [...prev, { character: placingCharacter, position }]);
     }
 
@@ -540,20 +540,20 @@ export function CombatTab({
                   <div>
                     <h3 className="font-semibold">Current Character: {combatCharacters[currentCharacterIndex].name}</h3>
                     <p>Faction: {combatCharacters[currentCharacterIndex].faction}</p>
-                    <p>Position: {combatCharacters[currentCharacterIndex].position} meters</p>
+                    <p>Position: {combatCharacters[currentCharacterIndex].position.x}, {combatCharacters[currentCharacterIndex].position.y}</p>
                     <p>Current Initiative: {combatCharacters[currentCharacterIndex].current_initiative}</p>
-                        {(() => {
-                          const currentChar = combatCharacters[currentCharacterIndex];
-                          const maxPhysical = calculateMaxPhysicalHealth(currentChar.attributes.body);
-                          const maxStun = calculateMaxStunHealth(currentChar.attributes.willpower);
-                          return (
-                            <>
-                              <p>Physical Damage: {currentChar.physical_damage} / {maxPhysical}</p>
-                              <p>Stun Damage: {currentChar.stun_damage} / {maxStun}</p>
-                              <p>Status: {currentChar.is_alive ? (currentChar.is_conscious ? 'Conscious' : 'Unconscious') : 'Dead'}</p>
-                            </>
-                          );
-                        })()}
+                    {(() => {
+                      const currentChar = combatCharacters[currentCharacterIndex];
+                      const maxPhysical = calculateMaxPhysicalHealth(currentChar.attributes.body);
+                      const maxStun = calculateMaxStunHealth(currentChar.attributes.willpower);
+                      return (
+                        <>
+                          <p>Physical Damage: {currentChar.physical_damage} / {maxPhysical}</p>
+                          <p>Stun Damage: {currentChar.stun_damage} / {maxStun}</p>
+                          <p>Status: {currentChar.is_alive ? (currentChar.is_conscious ? 'Conscious' : 'Unconscious') : 'Dead'}</p>
+                        </>
+                      );
+                    })()}
                   </div>
                   <div>
                     <h4 className="font-semibold">Action Type</h4>
@@ -731,7 +731,7 @@ export function CombatTab({
                             {combatCharacters[currentCharacterIndex].weapons
                               .filter(w => w.type === 'Ranged')
                               .map((weapon, weaponIndex) => 
-                                (weapon.fireModes ?? []).map(mode => (
+                                weapon.fireModes?.map(mode => (
                                   <SelectItem key={`${weaponIndex}-${mode}`} value={`${weaponIndex}|${mode}`}>
                                     {weapon.name} - {mode}
                                   </SelectItem>

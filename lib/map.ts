@@ -1,8 +1,4 @@
-// Define the Vector type for positions and sizes
-export type Vector = {
-  x: number;
-  y: number;
-};
+import { Vector } from './types';
 
 // Enum for movement types according to Shadowrun 5e rules
 export enum MoveType {
