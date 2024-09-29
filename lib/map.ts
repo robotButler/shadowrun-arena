@@ -36,10 +36,11 @@ export interface MapTile {
 }
 
 // Interface for the Map
-export interface GameMap {
-  size: Vector;
-  tiles: MapTile[][];
-}
+export type GameMap = {
+  width: number;
+  height: number;
+  cells: number[];
+};
 
 // Interface for move result and details
 export interface MoveResultAndDetails {
@@ -55,31 +56,27 @@ export function generate_map(
   partial_cover_prob: number,
   hard_cover_prob: number
 ): GameMap {
-  const tiles: MapTile[][] = [];
+  const cells: number[] = [];
 
   for (let y = 0; y < size.y; y++) {
-    const row: MapTile[] = [];
     for (let x = 0; x < size.x; x++) {
       const rand = Math.random();
-      let tileType: TileType = TileType.Open;
+      let cellType = 0; // Open
 
       if (rand < hard_cover_prob) {
-        tileType = TileType.HardCover;
+        cellType = 2; // Hard Cover
       } else if (rand < hard_cover_prob + partial_cover_prob) {
-        tileType = TileType.PartialCover;
+        cellType = 1; // Partial Cover
       }
 
-      row.push({
-        position: { x, y },
-        type: tileType,
-      });
+      cells.push(cellType);
     }
-    tiles.push(row);
   }
 
   return {
-    size,
-    tiles,
+    width: size.x,
+    height: size.y,
+    cells,
   };
 }
 

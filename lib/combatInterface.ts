@@ -25,7 +25,7 @@ export const startNewCombat = (
   faction2: string[],
   characters: Character[],
   factionModifiers: Record<string, number>,
-  initialDistance: number
+  gameMap: GameMap
 ): {
   combatCharacters: CombatCharacter[],
   initialInitiatives: Record<string, number>,

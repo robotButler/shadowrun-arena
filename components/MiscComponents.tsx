@@ -7,62 +7,14 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { ChevronDown, ChevronUp } from 'lucide-react'
 import { ActionLogEntryProps, SimulationResultProps, FactionSelectorProps, Character, MatchResult } from '../lib/types'
 
-export const ActionLogEntry = ({ summary, details }: ActionLogEntryProps) => {
-  const [isExpanded, setIsExpanded] = useState(false);
-
-  const highlightRoll = (roll: string) => {
-    const numValue = parseInt(roll.trim());
-    if (numValue >= 5) {
-      return <span className="bg-green-200">{roll}</span>;
-    } else if (numValue === 1) {
-      return <span className="bg-red-200">{roll}</span>;
-    }
-    return roll;
-  };
-
-  const processDetail = (detail: string) => {
-    if (detail.includes('rolls:')) {
-      const [prefix, rollsAndSummary] = detail.split('rolls:');
-      const [rolls, summary] = rollsAndSummary.split('(');
-      const highlightedRolls = rolls.split(',').map((roll, index) => (
-        <React.Fragment key={index}>
-          {highlightRoll(roll.trim())}
-          {index < rolls.split(',').length - 1 ? ',' : ''}
-          {' '}
-        </React.Fragment>
-      ));
-      return (
-        <>
-          {prefix}rolls: {highlightedRolls}({summary}
-        </>
-      );
-    }
-    return detail;
-  };
-
-  return (
-    <div className="mb-2">
-      <div className="flex items-center">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setIsExpanded(!isExpanded)}
-          className="mr-2"
-        >
-          {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-        </Button>
-        <span>{summary}</span>
-      </div>
-      {isExpanded && (
-        <div className="mt-2 pl-6 text-sm text-muted-foreground">
-          {details.map((detail, index) => (
-            <p key={index}>{processDetail(detail)}</p>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-};
+export const ActionLogEntry: React.FC<{ summary: string; details: string[] }> = ({ summary, details }) => (
+  <div className="mb-4">
+    <p className="font-semibold">{summary}</p>
+    {details.map((detail, index) => (
+      <p key={index} className="ml-4">{detail}</p>
+    ))}
+  </div>
+);
 
 export const SimulationResult = ({ result, index }: SimulationResultProps) => {
   const [isExpanded, setIsExpanded] = useState(false);

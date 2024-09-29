@@ -1,138 +1,111 @@
 'use client'
 
-import React from 'react';
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Checkbox } from "@/components/ui/checkbox"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { PlusCircle, Trash2, Edit, Swords, Play, ChevronDown, ChevronUp } from 'lucide-react'
-import { toast, ToastContainer } from 'react-toastify'
-import 'react-toastify/dist/ReactToastify.css'
+import { Swords, Play } from 'lucide-react'
+import { toast } from 'react-toastify'
 import {
   startNewCombat,
   updateInitiative,
   handleMovement,
   handleComplexAction,
   handleSimpleActions,
-  handleFireModeChange,
-  displayRoundSummary
+  handleFireModeChange
 } from '../lib/combatInterface'
-import { calculateMaxPhysicalHealth, calculateMaxStunHealth, isCharacterAlive, isCharacterConscious, cn, calculateDistance } from '../lib/utils'
+import { calculateMaxPhysicalHealth, calculateMaxStunHealth, isCharacterAlive, isCharacterConscious, calculateDistance } from '../lib/utils'
 import {
-  Attribute,
-  Skill,
-  FireMode,
-  Metatype,
   ActionType,
   SimpleAction,
   ComplexAction,
   Character,
   CombatCharacter,
   Weapon,
-  RoundResult,
-  MatchResult
+  FireMode
 } from '../lib/types'
-import {
-  initialCharacter,
-  initialWeapon,
-  saveCharacter,
-  deleteCharacter,
-  addToFaction,
-  removeFromFaction,
-  validateWeapon,
-  addWeapon,
-  removeWeapon
-} from '@/lib/characterManagement'
-import { ActionLogEntry, SimulationResult, FactionSelector } from './MiscComponents'
-import { CharacterManagement } from './CharacterManagement'
-import {
-  runSingleSimulation,
-  calculateRoundWins
-} from '../lib/combatSimulation'
+import { FactionSelector } from './MiscComponents'
+import { ActionLogEntry } from './MiscComponents'
 import { Vector, GameMap, generate_map } from '../lib/map'
 import { MapDisplay } from './MapDisplay'
 
-export function ShadowrunArena() {
-  const [characters, setCharacters] = useState<Character[]>([])
-  const [faction1, setFaction1] = useState<string[]>([])
-  const [faction2, setFaction2] = useState<string[]>([])
-  const [combatResults, setCombatResults] = useState<MatchResult[]>([])
-  const [simulations, setSimulations] = useState<number>(100)
-  const [factionModifiers, setFactionModifiers] = useState<Record<string, number>>({})
-  const [_, setExpandedSimulations] = useState<number[]>([])
-  const [combatCharacters, setCombatCharacters] = useState<CombatCharacter[]>([])
-  const [currentInitiativePhase, setCurrentInitiativePhase] = useState(0)
-  const [currentCharacterIndex, setCurrentCharacterIndex] = useState(0)
-  const [selectedActionType, setSelectedActionType] = useState<ActionType | null>(null)
-  const [selectedSimpleActions, setSelectedSimpleActions] = useState<SimpleAction[]>([])
-  const [selectedComplexAction, setSelectedComplexAction] = useState<ComplexAction | null>(null)
-  const [selectedWeapons, setSelectedWeapons] = useState<(Weapon | null)[]>([null, null])
-  const [selectedTargets, setSelectedTargets] = useState<(string | null)[]>([null, null])
-  const [movementDistance, setMovementDistance] = useState(0)
-  const [movementDirection, setMovementDirection] = useState<'Toward' | 'Away'>('Toward')
-  const [actionLog, setActionLog] = useState<{ summary: string, details: string[] }[]>([])
-  const [initialDistance, setInitialDistance] = useState(10)
-  const [selectedFreeAction, setSelectedFreeAction] = useState<'CallShot' | 'ChangeFireMode' | null>(null)
-  const [roundNumber, setRoundNumber] = useState(1)
-  const [initialInitiatives, setInitialInitiatives] = useState<Record<string, number>>({});
+export function CombatTab({
+  characters,
+  faction1,
+  faction2,
+  factionModifiers,
+  handleAddToFaction,
+  handleRemoveFromFaction
+}: {
+  characters: Character[]
+  faction1: string[]
+  faction2: string[]
+  factionModifiers: Record<string, number>
+  handleAddToFaction: (characterId: string, faction: 'faction1' | 'faction2') => void
+  handleRemoveFromFaction: (characterId: string, faction: 'faction1' | 'faction2') => void
+}) {
   const [isCombatActive, setIsCombatActive] = useState(false);
-  const [simulationInitialDistance, setSimulationInitialDistance] = useState(10)
+  const [combatCharacters, setCombatCharacters] = useState<CombatCharacter[]>([]);
+  const [currentInitiativePhase, setCurrentInitiativePhase] = useState(0);
+  const [currentCharacterIndex, setCurrentCharacterIndex] = useState(0);
+  const [selectedActionType, setSelectedActionType] = useState<ActionType | null>(null);
+  const [selectedSimpleActions, setSelectedSimpleActions] = useState<SimpleAction[]>([]);
+  const [selectedComplexAction, setSelectedComplexAction] = useState<ComplexAction | null>(null);
+  const [selectedWeapons, setSelectedWeapons] = useState<(Weapon | null)[]>([null, null]);
+  const [selectedTargets, setSelectedTargets] = useState<(string | null)[]>([null, null]);
+  const [movementDistance, setMovementDistance] = useState(0);
+  const [movementDirection, setMovementDirection] = useState<'Toward' | 'Away'>('Toward');
+  const [actionLog, setActionLog] = useState<{ summary: string, details: string[] }[]>([]);
+  const [initialDistance, setInitialDistance] = useState(10);
+  const [selectedFreeAction, setSelectedFreeAction] = useState<'CallShot' | 'ChangeFireMode' | null>(null);
+  const [roundNumber, setRoundNumber] = useState(1);
+  const [initialInitiatives, setInitialInitiatives] = useState<Record<string, number>>({});
   const [remainingMovement, setRemainingMovement] = useState(0);
   const [meleeRangeError, setMeleeRangeError] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [movementRemaining, setMovementRemaining] = useState(0);
-  const [mapSize, setMapSize] = useState<Vector>({ x: 25, y: 25 })
-  const [partialCoverProb, setPartialCoverProb] = useState(0.1)
-  const [hardCoverProb, setHardCoverProb] = useState(0.05)
-  const [gameMap, setGameMap] = useState<GameMap | null>(null)
-
-  // Load characters from localStorage only once when the component mounts
-  useEffect(() => {
-    const storedCharacters = localStorage.getItem('shadowrunCharacters')
-    if (storedCharacters) {
-      setCharacters(JSON.parse(storedCharacters))
-    }
-  }, []) // Empty dependency array means this effect runs only once on mount
-
-  // Save characters to localStorage whenever the characters state changes
-  useEffect(() => {
-    // Only save if characters is not empty
-    if (characters.length > 0) {
-      localStorage.setItem('shadowrunCharacters', JSON.stringify(characters))
-    }
-  }, [characters]) // This effect runs whenever characters state changes
+  const [mapSize, setMapSize] = useState<Vector>({ x: 25, y: 25 });
+  const [partialCoverProb, setPartialCoverProb] = useState(0.1);
+  const [hardCoverProb, setHardCoverProb] = useState(0.05);
+  const [gameMap, setGameMap] = useState<GameMap | null>(null);
+  const [isMapAccepted, setIsMapAccepted] = useState(false);
+  const [showMapGeneration, setShowMapGeneration] = useState(false);
+  const [placingCharacter, setPlacingCharacter] = useState<Character | null>(null);
+  const [placedCharacters, setPlacedCharacters] = useState<Array<{character: Character, position: Vector}>>([]);
 
   useEffect(() => {
-    generateNewMap()
-  }, [])
+    generateNewMap();
+  }, []);
 
   const generateNewMap = () => {
-    const newMap = generate_map(mapSize, partialCoverProb, hardCoverProb)
-    setGameMap(newMap)
-  }
+    const newMap = generate_map(mapSize, partialCoverProb, hardCoverProb);
+    setGameMap(newMap);
+  };
 
-  const startNewCombatHandler = () => {
-    const { combatCharacters, initialInitiatives, currentInitiativePhase, currentCharacterIndex, actionLog } = startNewCombat(faction1, faction2, characters, factionModifiers, initialDistance);
-    setCombatCharacters(combatCharacters);
-    setInitialInitiatives(initialInitiatives);
-    setCurrentInitiativePhase(currentInitiativePhase);
-    setCurrentCharacterIndex(currentCharacterIndex);
-    setActionLog(actionLog);
+  const startNewCombatHandler = (placedCharacters: Array<{character: Character, position: Vector}>) => {
+    if (!gameMap) {
+      setShowMapGeneration(true);
+      toast.info('Please generate and accept a map before starting combat');
+      return;
+    }
+    const result = startNewCombat(faction1, faction2, characters, factionModifiers, gameMap, placedCharacters);
+    setCombatCharacters(result.combatCharacters);
+    setInitialInitiatives(result.initialInitiatives);
+    setCurrentInitiativePhase(result.currentInitiativePhase);
+    setCurrentCharacterIndex(result.currentCharacterIndex);
+    setActionLog(result.actionLog);
     clearInputs();
     setRoundNumber(1);
     setIsCombatActive(true);
   };
 
   const endCombat = () => {
-    setIsCombatActive(false)
-    toast.info("Combat has ended!")
-  }
+    setIsCombatActive(false);
+    toast.info("Combat has ended!");
+  };
 
   const nextCharacter = () => {
     const { updatedCharacters, newInitiativePhase, newCharacterIndex, actionLog } = updateInitiative(combatCharacters, currentCharacterIndex, initialInitiatives);
@@ -143,17 +116,6 @@ export function ShadowrunArena() {
       setActionLog(prev => [...prev, actionLog]);
     }
   };
-
-  const runSimulations = () => {
-    const results: MatchResult[] = []
-
-    for (let i = 0; i < simulations; i++) {
-      const simulationResult = runSingleSimulation(faction1, faction2, characters, factionModifiers, simulationInitialDistance)
-      results.push(simulationResult)
-    }
-
-    setCombatResults(results)
-  }
 
   const setDefaultWeaponAndTarget = () => {
     if (combatCharacters.length > 0) {
@@ -218,12 +180,11 @@ export function ShadowrunArena() {
     if (action === 'FireWeapon' || action === 'MeleeAttack') {
       defaultWeapon = currentChar.weapons.find(w => w.type === (action === 'FireWeapon' ? 'Ranged' : 'Melee')) || null;
       
-      // For MeleeAttack, find the closest target within melee range
       if (action === 'MeleeAttack') {
         const meleeTargets = combatCharacters.filter(c => 
           c.faction !== currentChar.faction && 
           c.is_conscious &&
-          calculateDistance(currentChar.position, c.position) <= 2 // Assuming melee range is 2 meters
+          calculateDistance(currentChar.position, c.position) <= 2
         );
         defaultTarget = meleeTargets.length > 0 ? meleeTargets[0].id : null;
         
@@ -254,7 +215,6 @@ export function ShadowrunArena() {
       return newTargets;
     });
 
-    // Check melee range if MeleeAttack is selected
     if (selectedComplexAction === 'MeleeAttack') {
       const attacker = combatCharacters[currentCharacterIndex];
       const target = combatCharacters.find(c => c.id === targetId);
@@ -268,8 +228,8 @@ export function ShadowrunArena() {
 
   const handleMovementHandler = () => {
     if (movementDistance === 0) {
-      toast.error('Please enter a movement distance')
-      return
+      toast.error('Please enter a movement distance');
+      return;
     }
 
     const { updatedCharacters, actionLog, remainingDistance } = handleMovement(
@@ -282,9 +242,7 @@ export function ShadowrunArena() {
     setCombatCharacters(updatedCharacters);
     setActionLog(prev => [...prev, actionLog]);
     setMovementRemaining(remainingDistance);
-    setIsRunning(false); // Reset running state after movement
-    
-    // Update the movement distance dropdown
+    setIsRunning(false);
     setMovementDistance(0);
   };
 
@@ -334,8 +292,8 @@ export function ShadowrunArena() {
   };
 
   const handleFreeActionSelection = (action: 'CallShot' | 'ChangeFireMode') => {
-    setSelectedFreeAction(action === selectedFreeAction ? null : action)
-  }
+    setSelectedFreeAction(action === selectedFreeAction ? null : action);
+  };
 
   const handleFireModeChangeHandler = (weaponIndex: number, newFireMode: FireMode) => {
     const { updatedCharacters, actionLog } = handleFireModeChange(combatCharacters, currentCharacterIndex, weaponIndex, newFireMode);
@@ -344,22 +302,14 @@ export function ShadowrunArena() {
   };
 
   const clearInputs = () => {
-    setSelectedActionType(null)
-    setSelectedSimpleActions([])
-    setSelectedComplexAction(null)
-    setSelectedWeapons([null, null])
-    setSelectedTargets([null, null])
-    setMovementDistance(0)
-    setMovementDirection('Toward')
-    setSelectedFreeAction(null)
-  }
-
-  const handleAddToFaction = (characterId: string, faction: 'faction1' | 'faction2') => {
-    addToFaction(characterId, faction, faction1, setFaction1, faction2, setFaction2, setFactionModifiers);
-  };
-
-  const handleRemoveFromFaction = (characterId: string, faction: 'faction1' | 'faction2') => {
-    removeFromFaction(characterId, faction, setFaction1, setFaction2, setFactionModifiers);
+    setSelectedActionType(null);
+    setSelectedSimpleActions([]);
+    setSelectedComplexAction(null);
+    setSelectedWeapons([null, null]);
+    setSelectedTargets([null, null]);
+    setMovementDistance(0);
+    setMovementDirection('Toward');
+    setSelectedFreeAction(null);
   };
 
   const handleRunAction = () => {
@@ -391,7 +341,6 @@ export function ShadowrunArena() {
     for (let i = 1; i <= availableMovement; i++) {
       const newPosition = isMovingToward ? currentChar.position + i : currentChar.position - i;
       
-      // Check if this new position would place the character on top of an opponent
       if (!opposingChars.some(opponent => opponent.position === newPosition)) {
         availableDistances.push(i);
       }
@@ -400,150 +349,186 @@ export function ShadowrunArena() {
     return availableDistances;
   };
 
+  const handleAcceptMap = () => {
+    if (placedCharacters.length !== [...faction1, ...faction2].length) {
+      toast.error("Please place all characters before accepting the map.");
+      return;
+    }
+    setIsMapAccepted(true);
+    setShowMapGeneration(false);
+    toast.success("Map accepted!");
+    startNewCombatHandler(placedCharacters); // Pass placed characters to combat start
+  };
+
+  const handleMapCellClick = (position: Vector) => {
+    if (!placingCharacter || !gameMap) return;
+    
+    // Check if the cell is empty
+    if (gameMap.cells[position.y * gameMap.width + position.x] !== 0) {
+      toast.error("This cell is not empty. Please choose an empty cell.");
+      return;
+    }
+
+    // Check if the character is already placed
+    const existingIndex = placedCharacters.findIndex(pc => pc.character.id === placingCharacter.id);
+    if (existingIndex !== -1) {
+      // Update the position if already placed
+      setPlacedCharacters(prev => [
+        ...prev.slice(0, existingIndex),
+        { character: placingCharacter, position },
+        ...prev.slice(existingIndex + 1)
+      ]);
+    } else {
+      // Add new placement
+      setPlacedCharacters(prev => [...prev, { character: placingCharacter, position }]);
+    }
+
+    setPlacingCharacter(null);
+  };
+
   return (
-    <div className="container mx-auto p-4">
-      <h1 className="text-3xl font-bold text-center mb-6">Shadowrun 5e Arena</h1>
-      <Tabs defaultValue="characters">
-        <TabsList className="grid w-full grid-cols-3 mb-4">
-          {["characters", "combat", "simulations"].map((tab) => (
-            <TabsTrigger
-              key={tab}
-              value={tab}
-              className={cn(
-                "py-2 px-4 text-sm font-medium transition-all",
-                "data-[state=active]:bg-primary data-[state=active]:text-primary-foreground",
-                "data-[state=active]:shadow-md",
-                "hover:bg-muted"
-              )}
-            >
-              {tab.charAt(0).toUpperCase() + tab.slice(1)}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-        <TabsContent value="characters">
-          <CharacterManagement
-            characters={characters}
-            setCharacters={setCharacters}
-            faction1={faction1}
-            setFaction1={setFaction1}
-            faction2={faction2}
-            setFaction2={setFaction2}
-            factionModifiers={factionModifiers}
-            setFactionModifiers={setFactionModifiers}
-          />
-        </TabsContent>
-        <TabsContent value="combat">
-          <Card>
-            <CardHeader>
-              <CardTitle>Combat Simulator</CardTitle>
-              <CardDescription>Set up factions and simulate combat.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 gap-4">
-                <FactionSelector
-                  faction="faction1"
-                  characters={characters}
-                  factionMembers={faction1}
-                  factionModifiers={factionModifiers}
-                  onAddToFaction={handleAddToFaction}
-                  onRemoveFromFaction={handleRemoveFromFaction}
-                  onModifierChange={(characterId, value) => setFactionModifiers(prev => ({ ...prev, [characterId]: value }))}
-                />
-                <FactionSelector
-                  faction="faction2"
-                  characters={characters}
-                  factionMembers={faction2}
-                  factionModifiers={factionModifiers}
-                  onAddToFaction={handleAddToFaction}
-                  onRemoveFromFaction={handleRemoveFromFaction}
-                  onModifierChange={(characterId, value) => setFactionModifiers(prev => ({ ...prev, [characterId]: value }))}
-                />
-              </div>
-              <div className="mt-4">
-                <Label htmlFor="initialDistance">Initial Distance (meters):</Label>
-                <Input
-                  id="initialDistance"
-                  type="number"
-                  value={initialDistance}
-                  onChange={(e) => setInitialDistance(parseInt(e.target.value))}
-                  className="w-20"
-                />
-              </div>
-            </CardContent>
-            <CardFooter>
-              <Button onClick={startNewCombatHandler} disabled={faction1.length === 0 || faction2.length === 0 || isCombatActive}>
-                <Swords className="mr-2 h-4 w-4" /> New Combat
-              </Button>
-            </CardFooter>
-          </Card>
-          
-          {/* New Map Generation Card */}
-          <Card className="mt-4">
-            <CardHeader>
-              <CardTitle>Map Generation</CardTitle>
-              <CardDescription>Generate and customize the combat map.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 gap-4 mb-4">
-                <div>
-                  <Label htmlFor="mapWidth">Map Width:</Label>
-                  <Input
-                    id="mapWidth"
-                    type="number"
-                    value={mapSize.x}
-                    onChange={(e) => setMapSize(prev => ({ ...prev, x: parseInt(e.target.value) }))}
-                    className="w-20"
-                  />
+    <>
+      <Card>
+        <CardHeader>
+          <CardTitle>Combat Simulator</CardTitle>
+          <CardDescription>Set up factions and simulate combat.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <FactionSelector
+              faction="faction1"
+              characters={characters}
+              factionMembers={faction1}
+              factionModifiers={factionModifiers}
+              onAddToFaction={handleAddToFaction}
+              onRemoveFromFaction={handleRemoveFromFaction}
+              onModifierChange={(characterId, value) => {}}
+            />
+            <FactionSelector
+              faction="faction2"
+              characters={characters}
+              factionMembers={faction2}
+              factionModifiers={factionModifiers}
+              onAddToFaction={handleAddToFaction}
+              onRemoveFromFaction={handleRemoveFromFaction}
+              onModifierChange={(characterId, value) => {}}
+            />
+          </div>
+          <div className="mt-4 flex items-center gap-2">
+            <Label htmlFor="initialDistance" className="whitespace-nowrap">Initial Distance (meters):</Label>
+            <Input
+              id="initialDistance"
+              type="number"
+              value={initialDistance}
+              onChange={(e) => setInitialDistance(parseInt(e.target.value))}
+              className="w-20"
+            />
+          </div>
+        </CardContent>
+        <CardFooter>
+          <Button onClick={() => setShowMapGeneration(true)} disabled={faction1.length === 0 || faction2.length === 0 || isCombatActive}>
+            <Swords className="mr-2 h-4 w-4" /> New Combat
+          </Button>
+        </CardFooter>
+      </Card>
+      
+      {showMapGeneration && !isMapAccepted && (
+        <Card className="mt-4">
+          <CardHeader>
+            <CardTitle>Map Generation and Character Placement</CardTitle>
+            <CardDescription>Generate the map and place characters.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex gap-4">
+              <div className="w-1/2 space-y-4">
+                <div className="flex gap-4">
+                  <div className="w-1/2">
+                    <Label htmlFor="mapWidth" className="block mb-2">Map Width:</Label>
+                    <Input
+                      id="mapWidth"
+                      type="number"
+                      value={mapSize.x}
+                      onChange={(e) => setMapSize(prev => ({ ...prev, x: parseInt(e.target.value) }))}
+                      className="w-full"
+                    />
+                  </div>
+                  <div className="w-1/2">
+                    <Label htmlFor="mapHeight" className="block mb-2">Map Height:</Label>
+                    <Input
+                      id="mapHeight"
+                      type="number"
+                      value={mapSize.y}
+                      onChange={(e) => setMapSize(prev => ({ ...prev, y: parseInt(e.target.value) }))}
+                      className="w-full"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <Label htmlFor="mapHeight">Map Height:</Label>
-                  <Input
-                    id="mapHeight"
-                    type="number"
-                    value={mapSize.y}
-                    onChange={(e) => setMapSize(prev => ({ ...prev, y: parseInt(e.target.value) }))}
-                    className="w-20"
-                  />
+                <div className="flex gap-4">
+                  <div className="w-1/2">
+                    <Label htmlFor="partialCoverProb" className="block mb-2">Partial Cover Probability:</Label>
+                    <Input
+                      id="partialCoverProb"
+                      type="number"
+                      min="0"
+                      max="1"
+                      step="0.01"
+                      value={partialCoverProb}
+                      onChange={(e) => setPartialCoverProb(parseFloat(e.target.value))}
+                      className="w-full"
+                    />
+                  </div>
+                  <div className="w-1/2">
+                    <Label htmlFor="hardCoverProb" className="block mb-2">Hard Cover Probability:</Label>
+                    <Input
+                      id="hardCoverProb"
+                      type="number"
+                      min="0"
+                      max="1"
+                      step="0.01"
+                      value={hardCoverProb}
+                      onChange={(e) => setHardCoverProb(parseFloat(e.target.value))}
+                      className="w-full"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <Label htmlFor="partialCoverProb">Partial Cover Probability:</Label>
-                  <Input
-                    id="partialCoverProb"
-                    type="number"
-                    min="0"
-                    max="1"
-                    step="0.01"
-                    value={partialCoverProb}
-                    onChange={(e) => setPartialCoverProb(parseFloat(e.target.value))}
-                    className="w-20"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="hardCoverProb">Hard Cover Probability:</Label>
-                  <Input
-                    id="hardCoverProb"
-                    type="number"
-                    min="0"
-                    max="1"
-                    step="0.01"
-                    value={hardCoverProb}
-                    onChange={(e) => setHardCoverProb(parseFloat(e.target.value))}
-                    className="w-20"
-                  />
-                </div>
-              </div>
-              <div className="flex justify-between">
-                <Button onClick={generateNewMap}>Regenerate</Button>
-                <Button onClick={() => toast.success("Map accepted!")}>Accept</Button>
-              </div>
-              {gameMap && (
                 <div className="mt-4">
-                  <MapDisplay map={gameMap} />
+                  <h5 className="font-semibold mb-2">Place Characters</h5>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[...faction1, ...faction2].map(characterId => {
+                      const character = characters.find(c => c.id === characterId);
+                      return character ? (
+                        <Button
+                          key={character.id}
+                          onClick={() => setPlacingCharacter(character)}
+                          variant={placingCharacter?.id === character.id ? 'default' : 'outline'}
+                        >
+                          {character.name}
+                        </Button>
+                      ) : null;
+                    })}
+                  </div>
                 </div>
-              )}
-            </CardContent>
-          </Card>
-          
+              </div>
+              <div className="w-1/2">
+                {gameMap && (
+                  <MapDisplay 
+                    map={gameMap} 
+                    onCellClick={handleMapCellClick}
+                    placedCharacters={placedCharacters}
+                  />
+                )}
+              </div>
+            </div>
+            <div className="mt-4 flex justify-end space-x-2">
+              <Button onClick={generateNewMap}>Regenerate</Button>
+              <Button onClick={handleAcceptMap} disabled={placedCharacters.length !== [...faction1, ...faction2].length}>Accept</Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+      
+      {isMapAccepted && (
+        <>
           {isCombatActive && combatCharacters.length > 0 && (
             <Card className="mt-4">
               <CardHeader>
@@ -557,18 +542,18 @@ export function ShadowrunArena() {
                     <p>Faction: {combatCharacters[currentCharacterIndex].faction}</p>
                     <p>Position: {combatCharacters[currentCharacterIndex].position} meters</p>
                     <p>Current Initiative: {combatCharacters[currentCharacterIndex].current_initiative}</p>
-                    {(() => {
-                      const currentChar = combatCharacters[currentCharacterIndex];
-                      const maxPhysical = calculateMaxPhysicalHealth(currentChar.attributes.body);
-                      const maxStun = calculateMaxStunHealth(currentChar.attributes.willpower);
-                      return (
-                        <>
-                          <p>Physical Damage: {currentChar.physical_damage} / {maxPhysical}</p>
-                          <p>Stun Damage: {currentChar.stun_damage} / {maxStun}</p>
-                          <p>Status: {currentChar.is_alive ? (currentChar.is_conscious ? 'Conscious' : 'Unconscious') : 'Dead'}</p>
-                        </>
-                      );
-                    })()}
+                        {(() => {
+                          const currentChar = combatCharacters[currentCharacterIndex];
+                          const maxPhysical = calculateMaxPhysicalHealth(currentChar.attributes.body);
+                          const maxStun = calculateMaxStunHealth(currentChar.attributes.willpower);
+                          return (
+                            <>
+                              <p>Physical Damage: {currentChar.physical_damage} / {maxPhysical}</p>
+                              <p>Stun Damage: {currentChar.stun_damage} / {maxStun}</p>
+                              <p>Status: {currentChar.is_alive ? (currentChar.is_conscious ? 'Conscious' : 'Unconscious') : 'Dead'}</p>
+                            </>
+                          );
+                        })()}
                   </div>
                   <div>
                     <h4 className="font-semibold">Action Type</h4>
@@ -838,92 +823,8 @@ export function ShadowrunArena() {
               </CardContent>
             </Card>
           )}
-        </TabsContent>
-        <TabsContent value="simulations">
-          <Card>
-            <CardHeader>
-              <CardTitle>Combat Simulations</CardTitle>
-              <CardDescription>Run multiple combat simulations and view the results.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 gap-4 mb-4">
-                <FactionSelector
-                  faction="faction1"
-                  characters={characters}
-                  factionMembers={faction1}
-                  factionModifiers={factionModifiers}
-                  onAddToFaction={handleAddToFaction}
-                  onRemoveFromFaction={handleRemoveFromFaction}
-                  onModifierChange={(characterId, value) => setFactionModifiers(prev => ({ ...prev, [characterId]: value }))}
-                />
-                <FactionSelector
-                  faction="faction2"
-                  characters={characters}
-                  factionMembers={faction2}
-                  factionModifiers={factionModifiers}
-                  onAddToFaction={handleAddToFaction}
-                  onRemoveFromFaction={handleRemoveFromFaction}
-                  onModifierChange={(characterId, value) => setFactionModifiers(prev => ({ ...prev, [characterId]: value }))}
-                />
-              </div>
-              <div className="flex items-center space-x-2 mb-4">
-                <Label htmlFor="simulationInitialDistance">Initial Distance (meters):</Label>
-                <Input
-                  id="simulationInitialDistance"
-                  type="number"
-                  value={simulationInitialDistance}
-                  onChange={(e) => setSimulationInitialDistance(parseInt(e.target.value))}
-                  className="w-20"
-                />
-              </div>
-              <div className="flex items-center space-x-2">
-                <Label htmlFor="simulations">Number of Simulations:</Label>
-                <Input
-                  id="simulations"
-                  type="number"
-                  value={simulations}
-                  onChange={(e) => setSimulations(parseInt(e.target.value))}
-                  className="w-20"
-                />
-              </div>
-            </CardContent>
-            <CardFooter>
-              <Button onClick={runSimulations} disabled={faction1.length === 0 || faction2.length === 0}>
-                <Play className="mr-2 h-4 w-4" /> Run Simulations
-              </Button>
-            </CardFooter>
-          </Card>
-          {combatResults.length > 0 && (
-            <Card className="mt-4">
-              <CardHeader>
-                <CardTitle>Simulation Results</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {(() => {
-                  const roundWins = calculateRoundWins(combatResults);
-                  const totalSimulations = combatResults.length;
-                  const overallWinner = roundWins['Faction 1'] > roundWins['Faction 2'] ? 'Faction 1' : 'Faction 2';
-                  return (
-                    <>
-                      <p>Overall Winner: {overallWinner}</p>
-                      <p>Total Simulations: {totalSimulations}</p>
-                      <p>Rounds Won by Faction 1: {roundWins['Faction 1']} ({((roundWins['Faction 1'] / totalSimulations) * 100).toFixed(2)}%)</p>
-                      <p>Rounds Won by Faction 2: {roundWins['Faction 2']} ({((roundWins['Faction 2'] / totalSimulations) * 100).toFixed(2)}%)</p>
-                      {roundWins['Draw'] > 0 && <p>Draws: {roundWins['Draw']} ({((roundWins['Draw'] / totalSimulations) * 100).toFixed(2)}%)</p>}
-                    </>
-                  );
-                })()}
-                <ScrollArea className="h-[300px] w-full mt-4">
-                  {combatResults.map((result, index) => (
-                    <SimulationResult key={index} result={result} index={index} />
-                  ))}
-                </ScrollArea>
-              </CardContent>
-            </Card>
-          )}
-        </TabsContent>
-      </Tabs>
-      <ToastContainer position="bottom-right" />
-    </div>
+        </>
+      )}
+    </>
   )
 }
