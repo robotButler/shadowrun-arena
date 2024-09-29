@@ -1,6 +1,6 @@
 import React from 'react';
-import { GameMap, Vector } from '../lib/map';
-import { Character } from '../lib/types';
+import { GameMap, CellType } from '../lib/map';
+import { Character, Vector } from '../lib/types';
 
 interface MapDisplayProps {
   map: GameMap;
@@ -8,37 +8,56 @@ interface MapDisplayProps {
   placedCharacters: Array<{character: Character, position: Vector}>;
 }
 
-export const MapDisplay: React.FC<MapDisplayProps> = ({ map, onCellClick, placedCharacters }) => {
-  const getCharacterInitial = (character: Character) => {
-    const initial = character.name[0].toUpperCase();
-    const sameInitialCount = placedCharacters.filter(pc => pc.character.name[0].toUpperCase() === initial).length;
-    return sameInitialCount > 1 ? `${initial}${sameInitialCount}` : initial;
+export function MapDisplay({ map, onCellClick, placedCharacters }: MapDisplayProps) {
+  const cellSize = 20; // Size of each cell in pixels
+
+  const getCellColor = (cellType: CellType) => {
+    switch (cellType) {
+      case CellType.Empty: return 'white';
+      case CellType.PartialCover: return 'lightgray';
+      case CellType.HardCover: return 'gray';
+      default: return 'white';
+    }
   };
 
-  if (!map || !map.width || !map.height || !map.cells) {
-    return <div>Invalid map data</div>;
-  }
+  const getCharacterInitial = (position: Vector) => {
+    const character = placedCharacters.find(pc => pc.position.x === position.x && pc.position.y === position.y);
+    return character ? character.character.name[0].toUpperCase() : null;
+  };
 
   return (
-    <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${map.width}, 1fr)` }}>
-      {Array.from({ length: map.height }, (_, y) =>
-        Array.from({ length: map.width }, (_, x) => {
-          const cellIndex = y * map.width + x;
-          const cell = map.cells[cellIndex];
-          const placedCharacter = placedCharacters.find(pc => pc.position.x === x && pc.position.y === y);
-          return (
-            <div
-              key={`${x}-${y}`}
-              className={`w-8 h-8 flex items-center justify-center cursor-pointer ${
-                cell === 1 ? 'bg-gray-300' : cell === 2 ? 'bg-gray-500' : 'bg-white'
-              } border border-gray-400`}
-              onClick={() => onCellClick && onCellClick({ x, y })}
-            >
-              {placedCharacter && getCharacterInitial(placedCharacter.character)}
-            </div>
-          );
-        })
-      )}
-    </div>
+    <svg width={map.width * cellSize} height={map.height * cellSize}>
+      {map.cells.map((cell, index) => {
+        const x = index % map.width;
+        const y = Math.floor(index / map.width);
+        const characterInitial = getCharacterInitial({x, y});
+
+        return (
+          <g key={index} onClick={() => onCellClick && onCellClick({x, y})}>
+            <rect
+              x={x * cellSize}
+              y={y * cellSize}
+              width={cellSize}
+              height={cellSize}
+              fill={getCellColor(cell)}
+              stroke="black"
+              strokeWidth="1"
+            />
+            {characterInitial && (
+              <text
+                x={x * cellSize + cellSize / 2}
+                y={y * cellSize + cellSize / 2}
+                textAnchor="middle"
+                dominantBaseline="central"
+                fontSize={cellSize * 0.8}
+                fill="red"
+              >
+                {characterInitial}
+              </text>
+            )}
+          </g>
+        );
+      })}
+    </svg>
   );
-};
+}

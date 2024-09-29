@@ -31,12 +31,19 @@ export interface MapTile {
   type: TileType;
 }
 
+// Enum for cell types
+export enum CellType {
+  Empty = 0,
+  PartialCover = 1,
+  HardCover = 2
+}
+
 // Interface for the Map
-export type GameMap = {
+export interface GameMap {
   width: number;
   height: number;
-  cells: number[];
-};
+  cells: CellType[];
+}
 
 // Interface for move result and details
 export interface MoveResultAndDetails {
