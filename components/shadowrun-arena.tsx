@@ -55,6 +55,8 @@ import {
   runSingleSimulation,
   calculateRoundWins
 } from '../lib/combatSimulation'
+import { Vector, GameMap, generate_map } from '../lib/map'
+import { MapDisplay } from './MapDisplay'
 
 export function ShadowrunArena() {
   const [characters, setCharacters] = useState<Character[]>([])
@@ -85,6 +87,10 @@ export function ShadowrunArena() {
   const [meleeRangeError, setMeleeRangeError] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [movementRemaining, setMovementRemaining] = useState(0);
+  const [mapSize, setMapSize] = useState<Vector>({ x: 25, y: 25 })
+  const [partialCoverProb, setPartialCoverProb] = useState(0.1)
+  const [hardCoverProb, setHardCoverProb] = useState(0.05)
+  const [gameMap, setGameMap] = useState<GameMap | null>(null)
 
   // Load characters from localStorage only once when the component mounts
   useEffect(() => {
@@ -101,6 +107,15 @@ export function ShadowrunArena() {
       localStorage.setItem('shadowrunCharacters', JSON.stringify(characters))
     }
   }, [characters]) // This effect runs whenever characters state changes
+
+  useEffect(() => {
+    generateNewMap()
+  }, [])
+
+  const generateNewMap = () => {
+    const newMap = generate_map(mapSize, partialCoverProb, hardCoverProb)
+    setGameMap(newMap)
+  }
 
   const startNewCombatHandler = () => {
     const { combatCharacters, initialInitiatives, currentInitiativePhase, currentCharacterIndex, actionLog } = startNewCombat(faction1, faction2, characters, factionModifiers, initialDistance);
@@ -279,7 +294,14 @@ export function ShadowrunArena() {
       return;
     }
 
-    const { updatedCharacters, actionLog, combatEnded } = handleComplexAction(combatCharacters, currentCharacterIndex, selectedComplexAction!, selectedWeapons[0], selectedTargets[0], remainingMovement);
+    const { updatedCharacters, actionLog, combatEnded } = handleComplexAction(
+      combatCharacters,
+      currentCharacterIndex,
+      selectedComplexAction!,
+      selectedWeapons[0],
+      selectedTargets[0],
+      remainingMovement
+    );
     setCombatCharacters(updatedCharacters);
     setActionLog(prev => [...prev, actionLog]);
     if (combatEnded) {
@@ -292,7 +314,14 @@ export function ShadowrunArena() {
   };
 
   const handleSimpleActionsHandler = () => {
-    const { updatedCharacters, actionLog, combatEnded } = handleSimpleActions(combatCharacters, currentCharacterIndex, selectedSimpleActions, selectedWeapons, selectedTargets, remainingMovement);
+    const { updatedCharacters, actionLog, combatEnded } = handleSimpleActions(
+      combatCharacters,
+      currentCharacterIndex,
+      selectedSimpleActions,
+      selectedWeapons,
+      selectedTargets,
+      remainingMovement
+    );
     setCombatCharacters(updatedCharacters);
     setActionLog(prev => [...prev, ...actionLog]);
     if (combatEnded) {
@@ -447,6 +476,74 @@ export function ShadowrunArena() {
               </Button>
             </CardFooter>
           </Card>
+          
+          {/* New Map Generation Card */}
+          <Card className="mt-4">
+            <CardHeader>
+              <CardTitle>Map Generation</CardTitle>
+              <CardDescription>Generate and customize the combat map.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                  <Label htmlFor="mapWidth">Map Width:</Label>
+                  <Input
+                    id="mapWidth"
+                    type="number"
+                    value={mapSize.x}
+                    onChange={(e) => setMapSize(prev => ({ ...prev, x: parseInt(e.target.value) }))}
+                    className="w-20"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="mapHeight">Map Height:</Label>
+                  <Input
+                    id="mapHeight"
+                    type="number"
+                    value={mapSize.y}
+                    onChange={(e) => setMapSize(prev => ({ ...prev, y: parseInt(e.target.value) }))}
+                    className="w-20"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="partialCoverProb">Partial Cover Probability:</Label>
+                  <Input
+                    id="partialCoverProb"
+                    type="number"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                    value={partialCoverProb}
+                    onChange={(e) => setPartialCoverProb(parseFloat(e.target.value))}
+                    className="w-20"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="hardCoverProb">Hard Cover Probability:</Label>
+                  <Input
+                    id="hardCoverProb"
+                    type="number"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                    value={hardCoverProb}
+                    onChange={(e) => setHardCoverProb(parseFloat(e.target.value))}
+                    className="w-20"
+                  />
+                </div>
+              </div>
+              <div className="flex justify-between">
+                <Button onClick={generateNewMap}>Regenerate</Button>
+                <Button onClick={() => toast.success("Map accepted!")}>Accept</Button>
+              </div>
+              {gameMap && (
+                <div className="mt-4">
+                  <MapDisplay map={gameMap} />
+                </div>
+              )}
+            </CardContent>
+          </Card>
+          
           {isCombatActive && combatCharacters.length > 0 && (
             <Card className="mt-4">
               <CardHeader>
@@ -558,9 +655,9 @@ export function ShadowrunArena() {
                                 <SelectValue placeholder="Select Fire Mode" />
                               </SelectTrigger>
                               <SelectContent>
-                                {selectedWeapons[index]?.fireModes.map((mode) => (
+                                {selectedWeapons[index]?.fireModes?.map((mode) => (
                                   <SelectItem key={mode} value={mode}>{mode}</SelectItem>
-                                ))}
+                                )) ?? []}
                               </SelectContent>
                             </Select>
                           )}
@@ -649,7 +746,7 @@ export function ShadowrunArena() {
                             {combatCharacters[currentCharacterIndex].weapons
                               .filter(w => w.type === 'Ranged')
                               .map((weapon, weaponIndex) => 
-                                weapon.fireModes.map(mode => (
+                                (weapon.fireModes ?? []).map(mode => (
                                   <SelectItem key={`${weaponIndex}-${mode}`} value={`${weaponIndex}|${mode}`}>
                                     {weapon.name} - {mode}
                                   </SelectItem>
@@ -708,18 +805,17 @@ export function ShadowrunArena() {
                   </div>
                   <Button onClick={() => {
                     if (selectedActionType === 'Simple') {
-                      handleSimpleActionsHandler()
+                      handleSimpleActionsHandler();
                     } else if (selectedActionType === 'Complex') {
-                      handleComplexActionHandler()
+                      handleComplexActionHandler();
                     } else if (selectedFreeAction) {
-                      setActionLog(prev => [...prev, { summary: `${combatCharacters[currentCharacterIndex].name} performed a ${selectedFreeAction} action.`, details: [] }])
-                      clearInputs()
-                      nextCharacter()
-                    } else if (isRunning) {
-                      setActionLog(prev => [...prev, { summary: `${combatCharacters[currentCharacterIndex].name} prepared to run.`, details: [] }])
-                      // Don't clear inputs or move to next character, as running is a free action
+                      setActionLog(prev => [...prev, { summary: `${combatCharacters[currentCharacterIndex].name} performed a ${selectedFreeAction} action.`, details: [] }]);
+                      clearInputs();
+                      nextCharacter();
+                    } else if (movementDistance > 0) {
+                      handleMovementHandler();
                     } else {
-                      toast.error('Please select an action type, enter a movement distance, or choose a free action')
+                      toast.error('Please select an action type, enter a movement distance, or choose a free action');
                     }
                   }}>
                     Perform Action

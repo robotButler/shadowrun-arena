@@ -9,17 +9,18 @@ export type ComplexAction = 'FireWeapon' | 'MeleeAttack' | 'Sprint'
 
 // Weapon interface
 export interface Weapon {
-  name: string
-  damage: string
-  type: 'Melee' | 'Ranged'
-  damageType: 'P' | 'S'
-  ap: number
-  recoilComp: number
-  accuracy: number
-  fireModes: FireMode[]
-  currentFireMode: FireMode | null
-  ammoCount: number
-  reach: number
+  name: string;
+  type: 'Melee' | 'Ranged';
+  damage: number;
+  accuracy: number;
+  ap: number;
+  currentFireMode?: FireMode;
+  fireModes?: FireMode[];
+  ammoCount?: number;
+  range?: number[]; // This should be an array of numbers representing the weapon's range brackets
+  recoilComp?: number; // Add this if it's not already present
+  damageType: 'P' | 'S'; // Add this if it's not already present
+  // ... other properties
 }
 
 // Character interfaces

@@ -54,16 +54,27 @@ export const createCombatCharacter = (character: Character, faction: 'faction1' 
     },
     check_status: function () {
       const maxPhysicalHealth = calculateMaxPhysicalHealth(this.attributes.body);
-      const physicalOverflow = this.physical_damage - maxPhysicalHealth;
-      if (physicalOverflow > this.attributes.body) {
-        this.is_alive = false;
-        return [`${this.name} has died due to excessive physical damage.`];
+      const maxStunHealth = calculateMaxStunHealth(this.attributes.willpower);
+      const statusChanges: string[] = [];
+
+      if (this.physical_damage >= maxPhysicalHealth) {
+        const physicalOverflow = this.physical_damage - maxPhysicalHealth;
+        if (physicalOverflow > this.attributes.body) {
+          this.is_alive = false;
+          this.is_conscious = false;
+          statusChanges.push(`${this.name} has died due to excessive physical damage.`);
+        } else {
+          this.is_conscious = false;
+          statusChanges.push(`${this.name} is unconscious due to physical damage.`);
+        }
       }
-      if (this.stun_damage >= calculateMaxStunHealth(this.attributes.willpower)) {
+
+      if (this.stun_damage >= maxStunHealth) {
         this.is_conscious = false;
-        return [`${this.name} is unconscious due to stun damage.`];
+        statusChanges.push(`${this.name} is unconscious due to stun damage.`);
       }
-      return [];
+
+      return statusChanges;
     }
   }
 }
@@ -103,60 +114,56 @@ export const simulateRound = (characters: CombatCharacter[]): RoundResult => {
     const target = selectTarget(character, characters)
     if (!target) continue
 
-    const weapon = select_best_weapon(character, Math.abs(character.position - target.position))
+    const weapon = selectWeapon(character)
     let distance = calculateDistance(character.position, target.position)
 
     // Determine action based on distance and weapon type
-    if (distance > character.movement_remaining && (distance > MELEE_RANGE || weapon.type !== 'Melee')) {
-      // Sprint (Complex Action)
-      const sprintHits = rollSprinting(character);
-      const moveDistance = calculateSprintingDistance(character, sprintHits);
+    const maxRange = getMaxRange(weapon);
+
+    if (distance > maxRange && character.movement_remaining > 0) {
+      // Move towards target
+      const moveDistance = Math.min(character.movement_remaining, distance - maxRange);
       const direction = character.position < target.position ? 1 : -1;
       character.position += moveDistance * direction;
-      character.movement_remaining = 0;
-      roundResult.messages.push(`${character.name} sprinted ${moveDistance} meters towards ${target.name}`);
-    } else {
-      // Run (Free Action) and perform Complex Action
-      if (distance > MELEE_RANGE || weapon.type !== 'Melee') {
-        const runDistance = Math.min(character.movement_remaining, distance - (weapon.type === 'Melee' ? MELEE_RANGE : 0));
-        const direction = character.position < target.position ? 1 : -1;
-        character.position += runDistance * direction;
-        character.movement_remaining -= runDistance;
-        roundResult.messages.push(`${character.name} ran ${runDistance} meters towards ${target.name}`);
-      }
+      character.movement_remaining -= moveDistance;
+      distance = calculateDistance(character.position, target.position); // Recalculate distance after movement
+      roundResult.messages.push(`${character.name} moved ${moveDistance} meters towards ${target.name}. New distance: ${distance} meters.`);
+    }
 
-      // Recalculate distance after running
-      distance = calculateDistance(character.position, target.position);
+    // Perform attack if in range
+    if (distance <= maxRange) {
+      const attackResult = resolve_attack(character, target, weapon, weapon.currentFireMode || 'SA', distance)
+      roundResult.messages.push(...attackResult.messages)
+      roundResult.damage_dealt += attackResult.damage_dealt
+      roundResult.attack_rolls = attackResult.attack_rolls
+      roundResult.defense_rolls = attackResult.defense_rolls
+      roundResult.resistance_rolls = attackResult.resistance_rolls
+      roundResult.glitch = attackResult.glitch
+      roundResult.criticalGlitch = attackResult.criticalGlitch
 
-      // Perform attack if in range
-      if ((weapon.type === 'Melee' && distance <= MELEE_RANGE) || weapon.type !== 'Melee') {
-        const attackResult = resolve_attack(character, target, weapon, weapon.currentFireMode || 'SA', distance)
-        roundResult.messages.push(...attackResult.messages)
-        roundResult.damage_dealt += attackResult.damage_dealt
-        roundResult.attack_rolls = attackResult.attack_rolls
-        roundResult.defense_rolls = attackResult.defense_rolls
-        roundResult.resistance_rolls = attackResult.resistance_rolls
-        roundResult.glitch = attackResult.glitch
-        roundResult.criticalGlitch = attackResult.criticalGlitch
-
-        // Update ammo count
+      // Update ammo count
+      if (weapon.type === 'Ranged') {
         const bulletsFired = weapon.currentFireMode === 'BF' ? 3 : weapon.currentFireMode === 'FA' ? 6 : 1;
-        weapon.ammoCount -= bulletsFired;
+        weapon.ammoCount = (weapon.ammoCount || 0) - bulletsFired;
         if (weapon.ammoCount < 0) {
           roundResult.messages.push(`${character.name}'s ${weapon.name} is out of ammo!`);
         }
-      } else {
-        roundResult.messages.push(`${character.name} couldn't reach ${target.name} for melee attack`)
       }
+    } else {
+      roundResult.messages.push(`${character.name} couldn't reach ${target.name} for attack. Distance: ${distance} meters, Max weapon range: ${maxRange} meters.`)
     }
 
+    // Check status of both attacker and target
     const characterStatusChanges = character.check_status();
     const targetStatusChanges = target.check_status();
     roundResult.status_changes.push(...characterStatusChanges, ...targetStatusChanges);
 
     character.current_initiative -= 10
 
-    break
+    // Check if combat has ended after this character's action
+    if (check_combat_end(characters)) {
+      break;
+    }
   }
 
   return roundResult
@@ -216,6 +223,18 @@ export const calculateRoundWins = (results: MatchResult[]) => {
   return roundWins;
 };
 
+// Add this new function to get the maximum range of a weapon
+function getMaxRange(weapon: Weapon): number {
+  if (weapon.type === 'Melee') {
+    return MELEE_RANGE;
+  } else if (weapon.type === 'Ranged' && weapon.range) {
+    return Math.max(...weapon.range);
+  }
+  // Default range if not specified (you may want to adjust this)
+  return 50;
+}
+
+// Update the selectWeapon function to prefer ranged weapons when not in melee range
 function selectWeapon(character: CombatCharacter): Weapon {
   const meleeWeapons = character.weapons.filter(w => w.type === 'Melee');
   const rangedWeapons = character.weapons.filter(w => w.type === 'Ranged');
@@ -224,7 +243,9 @@ function selectWeapon(character: CombatCharacter): Weapon {
     // 30% chance to choose a melee weapon if available
     return meleeWeapons[Math.floor(Math.random() * meleeWeapons.length)];
   } else if (rangedWeapons.length > 0) {
-    return rangedWeapons[Math.floor(Math.random() * rangedWeapons.length)];
+    // Sort ranged weapons by maximum range
+    rangedWeapons.sort((a, b) => (Math.max(...(b.range || [0])) - Math.max(...(a.range || [0]))));
+    return rangedWeapons[0]; // Choose the ranged weapon with the longest range
   } else {
     // Fallback to melee if no ranged weapons
     return meleeWeapons[Math.floor(Math.random() * meleeWeapons.length)];
