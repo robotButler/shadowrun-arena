@@ -64,7 +64,7 @@ export function CombatTab({
   const [selectedFreeAction, setSelectedFreeAction] = useState<'CallShot' | 'ChangeFireMode' | null>(null);
   const [roundNumber, setRoundNumber] = useState(1);
   const [initialInitiatives, setInitialInitiatives] = useState<Record<string, number>>({});
-  const [remainingMovement, setRemainingMovement] = useState(0);
+  const [remainingMovement, setRemainingMovement] = useState<number>(0);
   const [meleeRangeError, setMeleeRangeError] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [movementRemaining, setMovementRemaining] = useState(0);
@@ -76,6 +76,7 @@ export function CombatTab({
   const [showMapGeneration, setShowMapGeneration] = useState(false);
   const [placingCharacter, setPlacingCharacter] = useState<Character | null>(null);
   const [placedCharacters, setPlacedCharacters] = useState<Array<{character: Character, position: Vector}>>([]);
+  const [isSelectingMoveTarget, setIsSelectingMoveTarget] = useState(false);
 
   useEffect(() => {
     generateNewMap();
@@ -86,13 +87,17 @@ export function CombatTab({
     setGameMap(newMap);
   };
 
-  const startNewCombatHandler = (placedCharacters: Array<{character: Character, position: Vector}>) => {
+  const startNewCombatHandler = () => {
     if (!gameMap) {
       setShowMapGeneration(true);
       toast.info('Please generate and accept a map before starting combat');
       return;
     }
-    const result = startNewCombat(faction1, faction2, characters, factionModifiers, gameMap);
+    if (placedCharacters.length !== [...faction1, ...faction2].length) {
+      toast.error("Please place all characters before starting combat.");
+      return;
+    }
+    const result = startNewCombat(faction1, faction2, characters, factionModifiers, gameMap, placedCharacters);
     setCombatCharacters(result.combatCharacters);
     setInitialInitiatives(result.initialInitiatives);
     setCurrentInitiativePhase(result.currentInitiativePhase);
@@ -101,6 +106,11 @@ export function CombatTab({
     clearInputs();
     setRoundNumber(1);
     setIsCombatActive(true);
+    
+    // Set initial remaining movement for the first character
+    const firstCharacter = result.combatCharacters[result.currentCharacterIndex];
+    const initialMovement = getMaxMoveDistance(firstCharacter);
+    setRemainingMovement(initialMovement);
   };
 
   const endCombat = () => {
@@ -116,6 +126,10 @@ export function CombatTab({
     if (actionLog) {
       setActionLog(prev => [...prev, actionLog]);
     }
+    // Reset remaining movement and running state for the new character
+    const newCharacter = updatedCharacters[newCharacterIndex];
+    setRemainingMovement(getMaxMoveDistance(newCharacter));
+    setIsRunning(false);
   };
 
   const setDefaultWeaponAndTarget = () => {
@@ -314,8 +328,19 @@ export function CombatTab({
   };
 
   const handleRunAction = () => {
+    if (isRunning) {
+      toast.error("Already running.");
+      return;
+    }
     setIsRunning(true);
-    toast.info("Running activated. Movement distance doubled for this turn.");
+    const currentChar = combatCharacters[currentCharacterIndex];
+    const newMaxDistance = getMaxMoveDistance(currentChar);
+    const newRemainingMovement = newMaxDistance - (getMaxMoveDistance(currentChar) - remainingMovement);
+    setRemainingMovement(newRemainingMovement);
+    setActionLog(prev => [...prev, { 
+      summary: `${currentChar.name} started running.`, 
+      details: [`New max move distance: ${newMaxDistance} meters`, `Remaining movement: ${newRemainingMovement} meters`] 
+    }]);
   };
 
   const getAvailableMovementDistances = () => {
@@ -361,7 +386,7 @@ export function CombatTab({
     setIsMapAccepted(true);
     setShowMapGeneration(false);
     toast.success("Map accepted!");
-    startNewCombatHandler(placedCharacters);
+    startNewCombatHandler();
   };
 
   const handleMapCellClick = (position: Vector) => {
@@ -384,6 +409,61 @@ export function CombatTab({
     }
 
     setPlacingCharacter(null);
+  };
+
+  const getMaxMoveDistance = (character: CombatCharacter) => {
+    const baseDistance = character.attributes.agility * 2;
+    if (selectedComplexAction === 'Sprint') {
+      return Math.floor(baseDistance * 2); // Sprinting doubles the distance
+    } else if (isRunning) {
+      return Math.floor(baseDistance * 2); // Running also doubles the distance
+    }
+    return Math.floor(baseDistance);
+  };
+
+  const handleMoveButtonClick = () => {
+    if (remainingMovement <= 0) {
+      toast.error("No movement remaining for this turn.");
+      return;
+    }
+    setIsSelectingMoveTarget(true);
+  };
+
+  const handleMapClick = (position: Vector) => {
+    if (!isSelectingMoveTarget) return;
+
+    const currentChar = combatCharacters[currentCharacterIndex];
+    const moveDistance = Math.floor(calculateDistance(currentChar.position, position));
+
+    if (moveDistance > remainingMovement) {
+      toast.error("Selected position is too far away.");
+      return;
+    }
+
+    if (gameMap?.cells?.[position.y * (gameMap?.width ?? 0) + position.x] !== 0) {
+      toast.error("Cannot move to an occupied or obstacle cell.");
+      return;
+    }
+
+    if (combatCharacters.some(char => char.position.x === position.x && char.position.y === position.y)) {
+      toast.error("Cannot move to a cell occupied by another character.");
+      return;
+    }
+
+    const updatedChars = [...combatCharacters];
+    updatedChars[currentCharacterIndex] = {
+      ...updatedChars[currentCharacterIndex],
+      position: position,
+      movement_remaining: updatedChars[currentCharacterIndex].movement_remaining + moveDistance
+    };
+
+    setCombatCharacters(updatedChars);
+    setIsSelectingMoveTarget(false);
+    setRemainingMovement(prev => prev - moveDistance);
+    setActionLog(prev => [...prev, { 
+      summary: `${currentChar.name} moved ${moveDistance} meters.`, 
+      details: [`New position: (${position.x}, ${position.y})`, `Remaining movement: ${remainingMovement - moveDistance} meters`] 
+    }]);
   };
 
   return (
@@ -749,44 +829,15 @@ export function CombatTab({
                     </div>
                     <div>
                       <h5 className="font-semibold">Movement</h5>
-                      <div className="flex items-center space-x-2">
-                        <Select 
-                          defaultValue="Toward"
-                          onValueChange={(value) => setMovementDirection(value as 'Toward' | 'Away')}
-                        >
-                          <SelectTrigger className="w-[180px]">
-                            <SelectValue placeholder="Select direction" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="Toward">Toward</SelectItem>
-                            <SelectItem value="Away">Away</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <Select
-                          value={movementDistance.toString()}
-                          onValueChange={(value) => setMovementDistance(parseInt(value))}
-                        >
-                          <SelectTrigger className="w-[180px]">
-                            <SelectValue placeholder="Select distance" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {getAvailableMovementDistances().map((distance) => (
-                              <SelectItem key={distance} value={distance.toString()}>
-                                {distance}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <Label>Meters</Label>
-                        <Button 
-                          onClick={handleMovementHandler}
-                          disabled={getAvailableMovementDistances().length === 0}
-                        >
-                          Move
-                        </Button>
-                      </div>
-                      {movementRemaining > 0 && (
-                        <p>Remaining movement: {movementRemaining} meters</p>
+                      <p>Remaining Move Distance: {remainingMovement} meters</p>
+                      <Button 
+                        onClick={handleMoveButtonClick}
+                        disabled={isSelectingMoveTarget || remainingMovement <= 0}
+                      >
+                        {isSelectingMoveTarget ? 'Selecting Move Target...' : 'Select Move Target'}
+                      </Button>
+                      {isSelectingMoveTarget && (
+                        <p className="mt-2">Click on the map to select your move target.</p>
                       )}
                     </div>
                     <Button onClick={() => {
@@ -815,6 +866,10 @@ export function CombatTab({
                         character: char,
                         position: char.position
                       }))}
+                      onCellClick={handleMapClick}
+                      currentCharacter={combatCharacters[currentCharacterIndex]}
+                      maxMoveDistance={remainingMovement}
+                      isSelectingMoveTarget={isSelectingMoveTarget}
                     />
                   </div>
                 </div>

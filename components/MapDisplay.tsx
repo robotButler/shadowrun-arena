@@ -1,17 +1,34 @@
 import React from 'react';
 import { GameMap, CellType } from '../lib/map';
-import { Character, Vector } from '../lib/types';
+import { Character, Vector, CombatCharacter } from '../lib/types';
+import { calculateDistance } from '../lib/utils';
 
 interface MapDisplayProps {
   map: GameMap;
   onCellClick?: (position: Vector) => void;
   placedCharacters: Array<{character: Character, position: Vector}>;
+  currentCharacter?: CombatCharacter;
+  maxMoveDistance?: number;
+  isSelectingMoveTarget?: boolean;
 }
 
-export function MapDisplay({ map, onCellClick, placedCharacters }: MapDisplayProps) {
+export function MapDisplay({ 
+  map, 
+  onCellClick, 
+  placedCharacters, 
+  currentCharacter,
+  maxMoveDistance,
+  isSelectingMoveTarget
+}: MapDisplayProps) {
   const cellSize = 20; // Size of each cell in pixels
 
-  const getCellColor = (cellType: CellType) => {
+  const getCellColor = (cellType: CellType, position: Vector) => {
+    if (currentCharacter && isSelectingMoveTarget && maxMoveDistance) {
+      const distance = calculateDistance(currentCharacter.position, position);
+      if (distance <= maxMoveDistance) {
+        return 'rgba(0, 255, 0, 0.3)'; // Light green for valid move targets
+      }
+    }
     switch (cellType) {
       case CellType.Empty: return 'white';
       case CellType.PartialCover: return 'lightgray';
@@ -30,16 +47,17 @@ export function MapDisplay({ map, onCellClick, placedCharacters }: MapDisplayPro
       {map.cells.map((cell, index) => {
         const x = index % map.width;
         const y = Math.floor(index / map.width);
-        const characterInitial = getCharacterInitial({x, y});
+        const position = { x, y };
+        const characterInitial = getCharacterInitial(position);
 
         return (
-          <g key={index} onClick={() => onCellClick && onCellClick({x, y})}>
+          <g key={index} onClick={() => onCellClick && onCellClick(position)}>
             <rect
               x={x * cellSize}
               y={y * cellSize}
               width={cellSize}
               height={cellSize}
-              fill={getCellColor(cell)}
+              fill={getCellColor(cell, position)}
               stroke="black"
               strokeWidth="1"
             />

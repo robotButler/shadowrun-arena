@@ -15,9 +15,11 @@ import {
   CombatCharacter,
   Weapon,
   FireMode,
-  Character
+  Character,
+  Vector
 } from './types';
 import { GameMap } from './map';
+import { calculateDistance } from './utils';
 
 const MELEE_RANGE = 2; // Melee range in meters
 
@@ -26,7 +28,8 @@ export const startNewCombat = (
   faction2: string[],
   characters: Character[],
   factionModifiers: Record<string, number>,
-  gameMap: GameMap
+  gameMap: GameMap,
+  placedCharacters: Array<{character: Character, position: Vector}>
 ): {
   combatCharacters: CombatCharacter[],
   initialInitiatives: Record<string, number>,
@@ -34,15 +37,27 @@ export const startNewCombat = (
   currentCharacterIndex: number,
   actionLog: { summary: string, details: string[] }[]
 } => {
-  const combatChars: CombatCharacter[] = [
-    ...faction1.map(id => createCombatCharacter(characters.find(c => c.id === id)!, 'faction1', 0, factionModifiers[id] || 0)),
-    ...faction2.map(id => createCombatCharacter(characters.find(c => c.id === id)!, 'faction2', initialDistance, factionModifiers[id] || 0))
-  ];
+  const combatCharacters: CombatCharacter[] = [...faction1, ...faction2].map(id => {
+    const character = characters.find(c => c.id === id);
+    const placedCharacter = placedCharacters.find(pc => pc.character.id === id);
+    if (!character || !placedCharacter) {
+      throw new Error(`Character with id ${id} not found`);
+    }
+    return {
+      ...character,
+      faction: faction1.includes(id) ? 'faction1' : 'faction2',
+      initiative: 0,
+      position: placedCharacter.position,
+      previousPhysicalDamage: 0,
+      previousStunDamage: 0,
+      movement_remaining: 0,
+    };
+  });
 
   const initialInitiativeRolls: Record<string, number> = {};
   const initiativeLog: string[] = ["Initial Initiative Rolls:"];
 
-  combatChars.forEach(char => {
+  combatCharacters.forEach(char => {
     const { initiative_total, initiative_rolls } = roll_initiative(char as Character);
     char.initiative = initiative_total;
     char.current_initiative = initiative_total;
@@ -51,12 +66,12 @@ export const startNewCombat = (
     initiativeLog.push(`${char.name}: ${initiative_total} (Dice: ${initiative_rolls.join(', ')})`);
   });
 
-  combatChars.sort((a, b) => b.initiative - a.initiative);
+  combatCharacters.sort((a, b) => b.initiative - a.initiative);
 
   return {
-    combatCharacters: combatChars,
+    combatCharacters: combatCharacters,
     initialInitiatives: initialInitiativeRolls,
-    currentInitiativePhase: combatChars[0].initiative,
+    currentInitiativePhase: combatCharacters[0].initiative,
     currentCharacterIndex: 0,
     actionLog: [{ summary: "Combat Started", details: initiativeLog }]
   };
@@ -65,7 +80,7 @@ export const startNewCombat = (
 export const createCombatCharacter = (
   character: Character,
   faction: 'faction1' | 'faction2',
-  position: number,
+  position: Vector,
   situationalModifiers: number
 ): CombatCharacter => ({
   ...character,
@@ -154,7 +169,6 @@ export const handleMovement = (
   const baseMaxDistance = currentChar.attributes.agility * 2;
   const maxDistance = isRunning ? baseMaxDistance * 2 : baseMaxDistance;
 
-  // Check if the character has already moved this turn
   const availableMovement = Math.max(0, maxDistance - currentChar.movement_remaining);
   const actualMovementDistance = Math.min(movementDistance, availableMovement);
 
@@ -165,21 +179,27 @@ export const handleMovement = (
     return { updatedCharacters: combatCharacters, actionLog: { summary: 'No valid target found', details: [] }, remainingDistance: 0 };
   }
 
-  const initialDistance = Math.abs(currentChar.position - target.position);
-  let newPosition = currentChar.position;
+  const initialDistance = calculateDistance(currentChar.position, target.position);
+  let newPosition = { ...currentChar.position };
 
-  // Adjust movement direction based on relative positions
-  const moveToward = (currentChar.position > target.position) === (movementDirection === 'Toward');
-  if (moveToward) {
-    newPosition -= actualMovementDistance;
-  } else {
-    newPosition += actualMovementDistance;
-  }
+  // Calculate movement vector
+  const dx = target.position.x - currentChar.position.x;
+  const dy = target.position.y - currentChar.position.y;
+  const length = Math.sqrt(dx * dx + dy * dy);
+  const unitX = dx / length;
+  const unitY = dy / length;
+
+  // Adjust movement direction
+  const moveToward = movementDirection === 'Toward';
+  const direction = moveToward ? 1 : -1;
+
+  newPosition.x += direction * unitX * actualMovementDistance;
+  newPosition.y += direction * unitY * actualMovementDistance;
 
   updatedChars[currentCharacterIndex].position = newPosition;
   updatedChars[currentCharacterIndex].movement_remaining += actualMovementDistance;
 
-  const newDistance = Math.abs(newPosition - target.position);
+  const newDistance = calculateDistance(newPosition, target.position);
   const actualMovement = Math.abs(initialDistance - newDistance);
   const remainingDistance = maxDistance - updatedChars[currentCharacterIndex].movement_remaining;
 
@@ -188,10 +208,11 @@ export const handleMovement = (
   return {
     updatedCharacters: updatedChars,
     actionLog: { 
-      summary: `${currentChar.name} ${movementType} ${actualMovement} meters ${movementDirection.toLowerCase()} the opposing faction.`,
+      summary: `${currentChar.name} ${movementType} ${actualMovement.toFixed(2)} meters ${movementDirection.toLowerCase()} the opposing faction.`,
       details: [
-        `New distance to target: ${newDistance} meters`,
-        `Remaining movement: ${remainingDistance} meters`,
+        `New position: (${newPosition.x.toFixed(2)}, ${newPosition.y.toFixed(2)})`,
+        `New distance to target: ${newDistance.toFixed(2)} meters`,
+        `Remaining movement: ${remainingDistance.toFixed(2)} meters`,
         isRunning ? `Running used as a Free Action` : ''
       ].filter(Boolean)
     },
