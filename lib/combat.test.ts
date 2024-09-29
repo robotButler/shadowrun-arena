@@ -11,7 +11,7 @@ import {
   get_ideal_range
 } from './combat';
 import { Character, Weapon, CombatCharacter, FireMode } from './types';
-import { calculatePhysicalLimit, calculateMentalLimit, calculateSocialLimit } from './utils';
+import { calculatePhysicalLimit, calculateMentalLimit } from './utils';
 import { jest, describe, test, expect } from '@jest/globals';
 
 // Mock character for testing
@@ -27,8 +27,7 @@ const mockCharacter: Character = {
     willpower: 4,
     logic: 4,
     intuition: 4,
-    charisma: 4,
-    essence: 6  // Add this line
+    charisma: 4
   },
   skills: {
     firearms: 4,
@@ -50,7 +49,6 @@ const mockCharacter: Character = {
   total_damage_dealt: 0,
   physicalLimit: 5,
   mentalLimit: 5,
-  socialLimit: 5,
   calculate_wound_modifier: jest.fn().mockReturnValue(0) as jest.MockedFunction<() => number>,
   check_status: jest.fn().mockReturnValue([]) as jest.MockedFunction<() => string[]>
 };
@@ -58,7 +56,7 @@ const mockCharacter: Character = {
 // Mock weapon for testing
 const mockWeapon: Weapon = {
   name: 'Test Weapon',
-  damage: '5P',
+  damage: 5,
   type: 'Ranged',
   damageType: 'P',
   ap: -2,
@@ -195,8 +193,4 @@ describe('Limit Calculations', () => {
     expect(limit).toBe(6); // Updated expected value
   });
 
-  test('calculateSocialLimit returns correct value', () => {
-    const limit = calculateSocialLimit({ ...mockCharacter.attributes, essence: 6 });
-    expect(limit).toBe(6); // Updated expected value
-  });
 });

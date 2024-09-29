@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
-import { Attribute, Vector } from './types'  // Update this import
+import { Attribute, Vector, CombatCharacter } from './types'  // Update this import
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -14,13 +14,13 @@ export function calculateMaxStunHealth(willpower: number): number {
   return 8 + Math.ceil(willpower / 2);
 }
 
-export function isCharacterAlive(physicalDamage: number, maxPhysicalHealth: number): boolean {
-  return physicalDamage < maxPhysicalHealth
-}
+export const isCharacterAlive = (physicalDamage: number, maxPhysicalHealth: number): boolean => {
+  return physicalDamage <= maxPhysicalHealth;
+};
 
-export function isCharacterConscious(stunDamage: number, maxStunHealth: number, physicalDamage: number, maxPhysicalHealth: number): boolean {
-  return stunDamage < maxStunHealth && physicalDamage < maxPhysicalHealth
-}
+export const isCharacterConscious = (stunDamage: number, maxStunHealth: number, physicalDamage: number, maxPhysicalHealth: number): boolean => {
+  return physicalDamage <= maxPhysicalHealth && stunDamage < maxStunHealth;
+};
 
 /**
  * Calculates the Euclidean distance between two positions.
@@ -28,11 +28,11 @@ export function isCharacterConscious(stunDamage: number, maxStunHealth: number, 
  * @param position2 The second position
  * @returns The distance between the two positions
  */
-export function calculateDistance(position1: Vector, position2: Vector): number {
-  const dx = position1.x - position2.x;
-  const dy = position1.y - position2.y;
+export const calculateDistance = (pos1: Vector, pos2: Vector): number => {
+  const dx = pos2.x - pos1.x;
+  const dy = pos2.y - pos1.y;
   return Math.sqrt(dx * dx + dy * dy);
-}
+};
 
 export function calculatePhysicalLimit(strength: number, body: number, reaction: number): number {
   console.log(`Calculating physical limit: strength=${strength}, body=${body}, reaction=${reaction}`);
@@ -53,10 +53,6 @@ export function calculatePhysicalLimit(strength: number, body: number, reaction:
 
 export function calculateMentalLimit(attributes: Record<Attribute, number>): number {
   return Math.ceil((attributes.logic * 2 + attributes.intuition + attributes.willpower) / 3);
-}
-
-export function calculateSocialLimit(attributes: Record<Attribute, number>): number {
-  return Math.ceil((attributes.charisma * 2 + attributes.willpower + attributes.essence) / 3);
 }
 
 /**
@@ -80,4 +76,10 @@ export function arePositionsAdjacent(position1: Vector, position2: Vector): bool
   const dx = Math.abs(position1.x - position2.x);
   const dy = Math.abs(position1.y - position2.y);
   return (dx <= 1 && dy <= 1) && !(dx === 0 && dy === 0);
+}
+
+export function calculate_wound_modifier(character: CombatCharacter): number {
+  const physicalModifier = Math.floor(character.physical_damage / 3);
+  const stunModifier = Math.floor(character.stun_damage / 3);
+  return physicalModifier + stunModifier;
 }

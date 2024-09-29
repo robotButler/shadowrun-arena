@@ -77,6 +77,7 @@ export function CombatTab({
   const [placingCharacter, setPlacingCharacter] = useState<Character | null>(null);
   const [placedCharacters, setPlacedCharacters] = useState<Array<{character: Character, position: Vector}>>([]);
   const [isSelectingMoveTarget, setIsSelectingMoveTarget] = useState(false);
+  const [maxMoveDistance, setMaxMoveDistance] = useState(0);
 
   useEffect(() => {
     generateNewMap();
@@ -107,10 +108,15 @@ export function CombatTab({
     setRoundNumber(1);
     setIsCombatActive(true);
     
-    // Set initial remaining movement for the first character
-    const firstCharacter = result.combatCharacters[result.currentCharacterIndex];
-    const initialMovement = getMaxMoveDistance(firstCharacter);
-    setRemainingMovement(initialMovement);
+    // Set initial remaining movement for all characters
+    const initialCombatCharacters = result.combatCharacters.map(char => ({
+      ...char,
+      movement_remaining: char.attributes.agility * 2
+    }));
+    setCombatCharacters(initialCombatCharacters);
+    
+    // Set remaining movement for the first character
+    setRemainingMovement(initialCombatCharacters[result.currentCharacterIndex].movement_remaining);
   };
 
   const endCombat = () => {
@@ -126,10 +132,10 @@ export function CombatTab({
     if (actionLog) {
       setActionLog(prev => [...prev, actionLog]);
     }
-    // Reset remaining movement and running state for the new character
-    const newCharacter = updatedCharacters[newCharacterIndex];
-    setRemainingMovement(getMaxMoveDistance(newCharacter));
+    // Update remaining movement for the new character
+    setRemainingMovement(updatedCharacters[newCharacterIndex].movement_remaining);
     setIsRunning(false);
+    setMaxMoveDistance(getMaxMoveDistance(updatedCharacters[newCharacterIndex]));
   };
 
   const setDefaultWeaponAndTarget = () => {
@@ -334,9 +340,19 @@ export function CombatTab({
     }
     setIsRunning(true);
     const currentChar = combatCharacters[currentCharacterIndex];
-    const newMaxDistance = getMaxMoveDistance(currentChar);
-    const newRemainingMovement = newMaxDistance - (getMaxMoveDistance(currentChar) - remainingMovement);
+    const baseMaxDistance = currentChar.attributes.agility * 2;
+    const newMaxDistance = baseMaxDistance * 2;
+    const newRemainingMovement = newMaxDistance - (baseMaxDistance - currentChar.movement_remaining);
+    
+    const updatedChars = [...combatCharacters];
+    updatedChars[currentCharacterIndex] = {
+      ...currentChar,
+      movement_remaining: newRemainingMovement
+    };
+    setCombatCharacters(updatedChars);
+    
     setRemainingMovement(newRemainingMovement);
+    setMaxMoveDistance(newMaxDistance);
     setActionLog(prev => [...prev, { 
       summary: `${currentChar.name} started running.`, 
       details: [`New max move distance: ${newMaxDistance} meters`, `Remaining movement: ${newRemainingMovement} meters`] 
@@ -413,13 +429,15 @@ export function CombatTab({
 
   const getMaxMoveDistance = (character: CombatCharacter) => {
     const baseDistance = character.attributes.agility * 2;
-    if (selectedComplexAction === 'Sprint') {
-      return Math.floor(baseDistance * 2); // Sprinting doubles the distance
-    } else if (isRunning) {
-      return Math.floor(baseDistance * 2); // Running also doubles the distance
-    }
-    return Math.floor(baseDistance);
+    return isRunning ? baseDistance * 2 : baseDistance;
   };
+
+  useEffect(() => {
+    if (combatCharacters.length > 0) {
+      const currentChar = combatCharacters[currentCharacterIndex];
+      setMaxMoveDistance(getMaxMoveDistance(currentChar));
+    }
+  }, [combatCharacters, currentCharacterIndex, isRunning]);
 
   const handleMoveButtonClick = () => {
     if (remainingMovement <= 0) {
@@ -435,7 +453,7 @@ export function CombatTab({
     const currentChar = combatCharacters[currentCharacterIndex];
     const moveDistance = Math.floor(calculateDistance(currentChar.position, position));
 
-    if (moveDistance > remainingMovement) {
+    if (moveDistance > currentChar.movement_remaining) {
       toast.error("Selected position is too far away.");
       return;
     }
@@ -454,15 +472,15 @@ export function CombatTab({
     updatedChars[currentCharacterIndex] = {
       ...updatedChars[currentCharacterIndex],
       position: position,
-      movement_remaining: updatedChars[currentCharacterIndex].movement_remaining + moveDistance
+      movement_remaining: updatedChars[currentCharacterIndex].movement_remaining - moveDistance
     };
 
     setCombatCharacters(updatedChars);
     setIsSelectingMoveTarget(false);
-    setRemainingMovement(prev => prev - moveDistance);
+    setRemainingMovement(updatedChars[currentCharacterIndex].movement_remaining);
     setActionLog(prev => [...prev, { 
       summary: `${currentChar.name} moved ${moveDistance} meters.`, 
-      details: [`New position: (${position.x}, ${position.y})`, `Remaining movement: ${remainingMovement - moveDistance} meters`] 
+      details: [`New position: (${position.x}, ${position.y})`, `Remaining movement: ${updatedChars[currentCharacterIndex].movement_remaining} meters`] 
     }]);
   };
 
@@ -829,6 +847,7 @@ export function CombatTab({
                     </div>
                     <div>
                       <h5 className="font-semibold">Movement</h5>
+                      <p>Max Move Distance: {maxMoveDistance} meters</p>
                       <p>Remaining Move Distance: {remainingMovement} meters</p>
                       <Button 
                         onClick={handleMoveButtonClick}

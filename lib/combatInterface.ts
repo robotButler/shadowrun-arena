@@ -7,7 +7,7 @@ import {
   apply_damage,
   check_combat_end,
 } from './combat';
-import { calculateMaxPhysicalHealth, calculateMaxStunHealth, isCharacterAlive, isCharacterConscious } from './utils';
+import { calculateMaxPhysicalHealth, calculateMaxStunHealth, isCharacterAlive, isCharacterConscious, calculate_wound_modifier } from './utils';
 import {
   ActionType,
   SimpleAction,
@@ -22,6 +22,13 @@ import { GameMap } from './map';
 import { calculateDistance } from './utils';
 
 const MELEE_RANGE = 2; // Melee range in meters
+
+const updatePosition = (position: Vector, direction: Vector, distance: number): Vector => {
+  return {
+    x: position.x + direction.x * distance,
+    y: position.y + direction.y * distance
+  };
+};
 
 export const startNewCombat = (
   faction1: string[],
@@ -45,6 +52,14 @@ export const startNewCombat = (
     }
     return {
       ...character,
+      ...placedCharacter,
+      updateStatus: () => {
+        // Implement updateStatus logic here
+      },
+      getStatusChanges: () => {
+        // Implement getStatusChanges logic here
+        return [];
+      },
       faction: faction1.includes(id) ? 'faction1' : 'faction2',
       initiative: 0,
       position: placedCharacter.position,
@@ -58,7 +73,7 @@ export const startNewCombat = (
   const initiativeLog: string[] = ["Initial Initiative Rolls:"];
 
   combatCharacters.forEach(char => {
-    const { initiative_total, initiative_rolls } = roll_initiative(char as Character);
+    const { initiative_total, initiative_rolls } = roll_initiative(char);
     char.initiative = initiative_total;
     char.current_initiative = initiative_total;
     initialInitiativeRolls[char.id] = initiative_total;
@@ -85,6 +100,8 @@ export const createCombatCharacter = (
 ): CombatCharacter => ({
   ...character,
   faction,
+  updateStatus: () => {},
+  getStatusChanges: () => [],
   initiative: 0,
   position,
   current_initiative: 0,
@@ -99,8 +116,28 @@ export const createCombatCharacter = (
   total_damage_dealt: 0,
   previousPhysicalDamage: 0,
   previousStunDamage: 0,
-  calculate_wound_modifier: () => 0,
-  check_status: () => []
+  calculate_wound_modifier: function() {
+    return calculate_wound_modifier(this);
+  },
+  check_status: function() {
+    const statusChanges: string[] = [];
+    const maxPhysicalHealth = calculateMaxPhysicalHealth(this.attributes.body);
+    const maxStunHealth = calculateMaxStunHealth(this.attributes.willpower);
+
+    const wasAlive = this.is_alive;
+    const wasConscious = this.is_conscious;
+
+    this.is_alive = isCharacterAlive(this.physical_damage, maxPhysicalHealth);
+    this.is_conscious = isCharacterConscious(this.stun_damage, maxStunHealth, this.physical_damage, maxPhysicalHealth);
+
+    if (wasAlive && !this.is_alive) {
+      statusChanges.push(`${this.name} has died!`);
+    } else if (wasConscious && !this.is_conscious) {
+      statusChanges.push(`${this.name} has been knocked unconscious!`);
+    }
+
+    return statusChanges;
+  }
 });
 
 export const updateInitiative = (
@@ -124,8 +161,6 @@ export const updateInitiative = (
       highestInitiative = char.current_initiative;
       nextCharacterIndex = index;
     }
-    // Reset movement_remaining at the start of each character's turn
-    char.movement_remaining = 0;
     return char;
   });
 
@@ -134,15 +169,15 @@ export const updateInitiative = (
   if (highestInitiative < 1) {
     updatedChars.forEach(char => {
       char.current_initiative = initialInitiatives[char.id];
-      // Also reset movement_remaining when initiative is reset
-      char.movement_remaining = 0;
+      // Reset movement_remaining for all characters at the start of a new turn
+      char.movement_remaining = char.attributes.agility * 2;
     });
     highestInitiative = Math.max(...updatedChars.map(char => char.current_initiative));
     nextCharacterIndex = updatedChars.findIndex(char => char.current_initiative === highestInitiative && char.is_conscious);
     
     actionLog = { 
-      summary: "Initiative Reset", 
-      details: ["All characters' initiatives have been reset to their initial values."]
+      summary: "New Combat Turn", 
+      details: ["All characters' initiatives have been reset to their initial values.", "Movement has been reset for all characters."]
     };
   }
 
@@ -169,46 +204,44 @@ export const handleMovement = (
   const baseMaxDistance = currentChar.attributes.agility * 2;
   const maxDistance = isRunning ? baseMaxDistance * 2 : baseMaxDistance;
 
-  const availableMovement = Math.max(0, maxDistance - currentChar.movement_remaining);
+  const availableMovement = Math.max(0, currentChar.movement_remaining);
   const actualMovementDistance = Math.min(movementDistance, availableMovement);
 
   const updatedChars = [...combatCharacters];
   const target = updatedChars.find(c => c.faction !== currentChar.faction && c.is_conscious);
   
   if (!target) {
-    return { updatedCharacters: combatCharacters, actionLog: { summary: 'No valid target found', details: [] }, remainingDistance: 0 };
+    return { updatedCharacters: combatCharacters, actionLog: { summary: 'No valid target found', details: [] }, remainingDistance: currentChar.movement_remaining };
   }
 
   const initialDistance = calculateDistance(currentChar.position, target.position);
-  let newPosition = { ...currentChar.position };
-
+  
   // Calculate movement vector
   const dx = target.position.x - currentChar.position.x;
   const dy = target.position.y - currentChar.position.y;
   const length = Math.sqrt(dx * dx + dy * dy);
-  const unitX = dx / length;
-  const unitY = dy / length;
+  const unitVector: Vector = { x: dx / length, y: dy / length };
 
   // Adjust movement direction
   const moveToward = movementDirection === 'Toward';
-  const direction = moveToward ? 1 : -1;
+  const direction: Vector = moveToward ? unitVector : { x: -unitVector.x, y: -unitVector.y };
 
-  newPosition.x += direction * unitX * actualMovementDistance;
-  newPosition.y += direction * unitY * actualMovementDistance;
+  const newPosition = updatePosition(currentChar.position, direction, actualMovementDistance);
 
-  updatedChars[currentCharacterIndex].position = newPosition;
-  updatedChars[currentCharacterIndex].movement_remaining += actualMovementDistance;
+  updatedChars[currentCharacterIndex] = {
+    ...currentChar,
+    position: newPosition,
+    movement_remaining: currentChar.movement_remaining - actualMovementDistance
+  };
 
   const newDistance = calculateDistance(newPosition, target.position);
   const actualMovement = Math.abs(initialDistance - newDistance);
-  const remainingDistance = maxDistance - updatedChars[currentCharacterIndex].movement_remaining;
-
-  const movementType = isRunning ? "ran" : "moved";
+  const remainingDistance = updatedChars[currentCharacterIndex].movement_remaining;
 
   return {
     updatedCharacters: updatedChars,
     actionLog: { 
-      summary: `${currentChar.name} ${movementType} ${actualMovement.toFixed(2)} meters ${movementDirection.toLowerCase()} the opposing faction.`,
+      summary: `${currentChar.name} ${isRunning ? "ran" : "moved"} ${actualMovement.toFixed(2)} meters ${movementDirection.toLowerCase()} the opposing faction.`,
       details: [
         `New position: (${newPosition.x.toFixed(2)}, ${newPosition.y.toFixed(2)})`,
         `New distance to target: ${newDistance.toFixed(2)} meters`,
@@ -246,21 +279,30 @@ export const handleComplexAction = (
 
     const target = combatCharacters.find(c => c.faction !== currentChar.faction && c.is_conscious);
     if (target) {
-      const direction = currentChar.position < target.position ? 1 : -1;
-      updatedChars[currentCharacterIndex].position += (remainingMovement + extraDistance) * direction;
+      const direction: Vector = {
+        x: target.position.x - currentChar.position.x,
+        y: target.position.y - currentChar.position.y
+      };
+      const length = Math.sqrt(direction.x * direction.x + direction.y * direction.y);
+      const unitVector: Vector = { x: direction.x / length, y: direction.y / length };
+      
+      updatedChars[currentCharacterIndex].position = updatePosition(currentChar.position, unitVector, remainingMovement + extraDistance);
     }
     actionLog = { summary: `${currentChar.name} sprinted an extra ${extraDistance} meters!`, details: [] };
   } else if ((selectedComplexAction === 'FireWeapon' || selectedComplexAction === 'MeleeAttack') && selectedWeapon && selectedTargetId) {
     const target = combatCharacters.find(c => c.id === selectedTargetId);
     if (target) {
-      const distance = Math.abs(currentChar.position - target.position);
+      const distance = calculateDistance(currentChar.position, target.position);
       
       if (selectedComplexAction === 'MeleeAttack' && distance > MELEE_RANGE) {
         if (remainingMovement >= distance - MELEE_RANGE) {
           // Move into melee range
-          const direction = currentChar.position < target.position ? 1 : -1;
-          updatedChars[currentCharacterIndex].position += (distance - MELEE_RANGE) * direction;
-          actionLog.details.push(`${currentChar.name} moved ${distance - MELEE_RANGE} meters to engage in melee.`);
+          const direction: Vector = {
+            x: (target.position.x - currentChar.position.x) / distance,
+            y: (target.position.y - currentChar.position.y) / distance
+          };
+          updatedChars[currentCharacterIndex].position = updatePosition(currentChar.position, direction, distance - MELEE_RANGE);
+          actionLog.details.push(`${currentChar.name} moved ${(distance - MELEE_RANGE).toFixed(2)} meters to engage in melee.`);
         } else {
           actionLog.summary = `${currentChar.name} couldn't reach the target for melee attack.`;
           return { updatedCharacters: updatedChars, actionLog, combatEnded: false };
@@ -322,7 +364,7 @@ export const handleSimpleActions = (
       const targetId = selectedTargets[index]!;
       const target = combatCharacters.find(c => c.id === targetId);
       if (target) {
-        const distance = Math.abs(currentChar.position - target.position);
+        const distance = calculateDistance(currentChar.position, target.position);
         const result = resolve_attack(currentChar, target, weapon, weapon.currentFireMode ?? 'SS', distance);
         const summary = `${currentChar.name} fired at ${target.name} with ${weapon.name} and dealt ${result.damage_dealt} damage.`;
         actionLog.push({ summary, details: result.messages });
@@ -365,7 +407,7 @@ export const handleSimpleActions = (
         updatedChars,
         currentCharacterIndex,
         remainingMovement,
-        currentChar.position < target.position ? 'Toward' : 'Away',
+        currentChar.position.x < target.position.x ? 'Toward' : 'Away',
         isRunning
       );
       updatedChars = updatedCharacters;
@@ -417,13 +459,25 @@ export const checkAndUpdateCharacterStatus = (character: CombatCharacter): {
   const wasAlive = character.is_alive;
   const wasConscious = character.is_conscious;
 
-  character.is_alive = isCharacterAlive(character.physical_damage, maxPhysicalHealth);
-  character.is_conscious = isCharacterConscious(character.stun_damage, maxStunHealth, character.physical_damage, maxPhysicalHealth);
+  // Check if stun damage overflows to physical damage
+  if (character.stun_damage > maxStunHealth) {
+    const overflow = character.stun_damage - maxStunHealth;
+    character.physical_damage += overflow;
+    character.stun_damage = maxStunHealth;
+  }
+
+  // Update is_alive and is_conscious status
+  character.is_alive = character.physical_damage <= maxPhysicalHealth;
+  character.is_conscious = character.is_alive && (character.stun_damage < maxStunHealth);
 
   if (wasAlive && !character.is_alive) {
     statusChanges.push(`${character.name} has died!`);
   } else if (wasConscious && !character.is_conscious) {
-    statusChanges.push(`${character.name} has been knocked unconscious!`);
+    if (character.is_alive) {
+      statusChanges.push(`${character.name} has been knocked unconscious!`);
+    } else {
+      statusChanges.push(`${character.name} has been killed!`);
+    }
   }
 
   character.previousPhysicalDamage = character.physical_damage;

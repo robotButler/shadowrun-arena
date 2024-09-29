@@ -2,10 +2,13 @@
 
 import { Character, CombatCharacter, Weapon, MatchResult, RoundResult } from './types'
 import { roll_initiative, resolve_attack, check_combat_end, select_best_weapon, get_ideal_range } from './combat'
-import { calculateMaxPhysicalHealth, calculateMaxStunHealth, isCharacterAlive, isCharacterConscious, calculatePhysicalLimit, calculateMentalLimit, calculateSocialLimit } from './utils';
+import { calculateMaxPhysicalHealth, calculateMaxStunHealth, isCharacterAlive, isCharacterConscious, calculatePhysicalLimit, calculateMentalLimit } from './utils';
 import { calculateDistance } from './utils';
+import { ManagedCharacter } from './characterManagement';
 
 const MELEE_RANGE = 2; // Melee range in meters
+
+type Vector = { x: number, y: number };
 
 function calculateRunningDistance(character: CombatCharacter): number {
   return character.attributes.agility * 4; // Updated to running speed
@@ -26,57 +29,13 @@ function calculateSprintingDistance(character: CombatCharacter, sprintHits: numb
 }
 
 export const createCombatCharacter = (character: Character, faction: 'faction1' | 'faction2', position: number, factionModifiers: Record<string, number>): CombatCharacter => {
-  const { initiative_total } = roll_initiative(character)
-  return {
-    ...character,
-    faction,
-    initiative: initiative_total,
-    current_initiative: initiative_total,
-    position,
-    cumulative_recoil: 0,
-    wound_modifier: 0,
-    situational_modifiers: factionModifiers[character.id] || 0,
-    physical_damage: 0,
-    stun_damage: 0,
-    is_conscious: true,
-    is_alive: true,
-    total_damage_dealt: 0,
-    previousPhysicalDamage: 0,
-    previousStunDamage: 0,
-    movement_remaining: 0,
-    physicalLimit: calculatePhysicalLimit(character.attributes.strength, character.attributes.body, character.attributes.reaction),
-    mentalLimit: calculateMentalLimit(character.attributes),
-    socialLimit: calculateSocialLimit(character.attributes),
-    calculate_wound_modifier: function (): number {
-      const totalDamage = this.physical_damage + this.stun_damage;
-      const maxHealth = Math.max(calculateMaxPhysicalHealth(this.attributes.body) + calculateMaxStunHealth(this.attributes.willpower), 1);
-      return Math.floor((totalDamage / maxHealth) * 3);
-    },
-    check_status: function () {
-      const maxPhysicalHealth = calculateMaxPhysicalHealth(this.attributes.body);
-      const maxStunHealth = calculateMaxStunHealth(this.attributes.willpower);
-      const statusChanges: string[] = [];
-
-      if (this.physical_damage >= maxPhysicalHealth) {
-        const physicalOverflow = this.physical_damage - maxPhysicalHealth;
-        if (physicalOverflow > this.attributes.body) {
-          this.is_alive = false;
-          this.is_conscious = false;
-          statusChanges.push(`${this.name} has died due to excessive physical damage.`);
-        } else {
-          this.is_conscious = false;
-          statusChanges.push(`${this.name} is unconscious due to physical damage.`);
-        }
-      }
-
-      if (this.stun_damage >= maxStunHealth) {
-        this.is_conscious = false;
-        statusChanges.push(`${this.name} is unconscious due to stun damage.`);
-      }
-
-      return statusChanges;
-    }
-  }
+  const managedCharacter = new ManagedCharacter(character, faction, { x: position, y: 0 });
+  const { initiative_total } = roll_initiative(managedCharacter);
+  managedCharacter.initiative = initiative_total;
+  managedCharacter.current_initiative = initiative_total;
+  managedCharacter.situational_modifiers = factionModifiers[character.id] || 0;
+  managedCharacter.movement_remaining = calculateRunningDistance(managedCharacter);
+  return managedCharacter;
 }
 
 export const simulateRound = (characters: CombatCharacter[]): RoundResult => {
@@ -149,14 +108,14 @@ export const simulateRound = (characters: CombatCharacter[]): RoundResult => {
           roundResult.messages.push(`${character.name}'s ${weapon.name} is out of ammo!`);
         }
       }
+
+      // Update status of both attacker and target
+      character.updateStatus();
+      target.updateStatus();
+      roundResult.status_changes.push(...character.getStatusChanges(), ...target.getStatusChanges());
     } else {
       roundResult.messages.push(`${character.name} couldn't reach ${target.name} for attack. Distance: ${distance} meters, Max weapon range: ${maxRange} meters.`)
     }
-
-    // Check status of both attacker and target
-    const characterStatusChanges = character.check_status();
-    const targetStatusChanges = target.check_status();
-    roundResult.status_changes.push(...characterStatusChanges, ...targetStatusChanges);
 
     character.current_initiative -= 10
 

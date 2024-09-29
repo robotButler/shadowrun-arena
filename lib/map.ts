@@ -132,9 +132,9 @@ export function move_char(
     if (
       tileX < 0 ||
       tileY < 0 ||
-      tileX >= gameMap.size.x ||
-      tileY >= gameMap.size.y ||
-      gameMap.tiles[tileY][tileX].type === TileType.HardCover
+      tileX >= gameMap.width ||
+      tileY >= gameMap.height ||
+      gameMap.cells[tileY * gameMap.width + tileX] === CellType.HardCover
     ) {
       return {
         success: false,

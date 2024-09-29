@@ -1,7 +1,8 @@
 // combat.ts
 
-import { Weapon, Character, RoundResult, MatchResult } from './types';
-import { calculatePhysicalLimit } from './utils';
+import { Weapon, Character, RoundResult, MatchResult, CombatCharacter } from './types';
+import { calculateMaxPhysicalHealth, calculateMaxStunHealth, calculatePhysicalLimit, calculate_wound_modifier } from './utils';
+import { ManagedCharacter } from './characterManagement';
 
 // Utility functions
 function roll_d6(numDice: number): number[] {
@@ -32,7 +33,7 @@ const range_modifiers: { [weaponType: string]: [number, number][] } = {
 };
 
 // Functions
-function roll_initiative(character: Character): { initiative_total: number, initiative_rolls: number[] } {
+function roll_initiative(character: CombatCharacter): { initiative_total: number, initiative_rolls: number[] } {
     const initiative_score = character.attributes.reaction + character.attributes.intuition;
     const initiative_rolls = roll_d6(character.initiativeDice);
     const initiative_total = initiative_score + initiative_rolls.reduce((a, b) => a + b, 0);
@@ -48,7 +49,7 @@ function calculate_recoil(attacker: Character, weapon: Weapon, fire_mode: string
         bullets_fired = 6; // For simplicity, assume 6 bullets fired in FA
     }
     // Calculate recoil penalty
-    let recoil_penalty = attacker.cumulative_recoil + bullets_fired - 1 - weapon.recoilComp;
+    let recoil_penalty = attacker.cumulative_recoil + bullets_fired - 1 - (weapon.recoilComp ?? 0);
     recoil_penalty = Math.max(recoil_penalty, 0); // Penalty is negative
     // Update cumulative recoil
     attacker.cumulative_recoil += bullets_fired - 1;
@@ -69,7 +70,7 @@ function get_range_modifier(weapon_type: string, distance: number): number {
 }
 
 // Update the resolve_attack function
-function resolve_attack(attacker: Character, defender: Character, weapon: Weapon, fire_mode: 'SS' | 'SA' | 'BF' | 'FA' = 'SA', distance: number = 0): RoundResult {
+function resolve_attack(attacker: CombatCharacter, defender: CombatCharacter, weapon: Weapon, fire_mode: 'SS' | 'SA' | 'BF' | 'FA' = 'SA', distance: number = 0): RoundResult {
     const result: RoundResult = {
         actingCharacter: attacker.name,
         initiativePhase: 0,
@@ -80,7 +81,7 @@ function resolve_attack(attacker: Character, defender: Character, weapon: Weapon
         defense_rolls: [],
         resistance_rolls: [],
         status_changes: [],
-        messages: [], // Initialize as an empty array
+        messages: [],
         glitch: false,
         criticalGlitch: false,
     };
@@ -88,10 +89,10 @@ function resolve_attack(attacker: Character, defender: Character, weapon: Weapon
     if (weapon.type.toLowerCase() === 'melee') {
         // Melee attack
         const base_pool = attacker.attributes.agility + (attacker.skills['close combat'] || 0);
-        const reach_modifier = weapon.reach - 0; // Assuming defender has no reach weapon
-        attacker.calculate_wound_modifier();
-        const total_attack_pool = Math.max(base_pool + reach_modifier + attacker.wound_modifier + attacker.situational_modifiers, 1);
-        result.messages.push(`Melee Attack: Base pool (${base_pool}) + Reach modifier (${reach_modifier}) + Wound modifier (${attacker.wound_modifier}) + Situational modifiers (${attacker.situational_modifiers}) = Total attack pool (${total_attack_pool})`);
+        const reach_modifier = (weapon?.reach ?? 0) - 0;
+        const wound_modifier = calculate_wound_modifier(attacker);
+        const total_attack_pool = Math.max(base_pool + reach_modifier + wound_modifier + attacker.situational_modifiers, 1);
+        result.messages.push(`Melee Attack: Base pool (${base_pool}) + Reach modifier (${reach_modifier}) + Wound modifier (${wound_modifier}) + Situational modifiers (${attacker.situational_modifiers}) = Total attack pool (${total_attack_pool})`);
 
         const attack_rolls = roll_d6(total_attack_pool);
         const { hits: attack_hits, ones: attack_ones, isGlitch, isCriticalGlitch } = count_hits_and_ones(attack_rolls);
@@ -123,9 +124,9 @@ function resolve_attack(attacker: Character, defender: Character, weapon: Weapon
 
         // Defender's defense test
         const base_defense_pool = defender.attributes.reaction + defender.attributes.intuition;
-        defender.calculate_wound_modifier();
-        const total_defense_pool = Math.max(base_defense_pool - reach_modifier + defender.wound_modifier + defender.situational_modifiers, 1);
-        result.messages.push(`Defense: Base pool (${base_defense_pool}) - Reach modifier (${reach_modifier}) + Wound modifier (${defender.wound_modifier}) + Situational modifiers (${defender.situational_modifiers}) = Total defense pool (${total_defense_pool})`);
+        const defender_wound_modifier = calculate_wound_modifier(defender);
+        const total_defense_pool = Math.max(base_defense_pool - reach_modifier + defender_wound_modifier + defender.situational_modifiers, 1);
+        result.messages.push(`Defense: Base pool (${base_defense_pool}) - Reach modifier (${reach_modifier}) + Wound modifier (${defender_wound_modifier}) + Situational modifiers (${defender.situational_modifiers}) = Total defense pool (${total_defense_pool})`);
 
         const defense_rolls = roll_d6(total_defense_pool);
         const { hits: defense_hits } = count_hits_and_ones(defense_rolls);
@@ -142,8 +143,7 @@ function resolve_attack(attacker: Character, defender: Character, weapon: Weapon
         }
 
         // Calculate total damage
-        // Assume the weapon damage value already includes the strength bonus
-        const base_damage = parseInt(weapon.damage);
+        const base_damage = weapon.damage;
         const total_damage = base_damage + net_hits;
         result.messages.push(`Damage: Base (${base_damage}) + Net hits (${net_hits}) = Total damage (${total_damage})`);
 
@@ -153,10 +153,10 @@ function resolve_attack(attacker: Character, defender: Character, weapon: Weapon
 
         // Damage resistance test
         let resistance_pool = defender.attributes.body + Math.max(modified_armor, 0);
-        defender.calculate_wound_modifier();
-        resistance_pool += defender.wound_modifier + defender.situational_modifiers;
+        const defender_wound_modifier_resistance = calculate_wound_modifier(defender);
+        resistance_pool += defender_wound_modifier_resistance + defender.situational_modifiers;
         resistance_pool = Math.max(resistance_pool, 1);
-        result.messages.push(`Damage resistance pool: Body (${defender.attributes.body}) + Modified armor (${Math.max(modified_armor, 0)}) + Wound modifier (${defender.wound_modifier}) + Situational modifiers (${defender.situational_modifiers}) = ${resistance_pool}`);
+        result.messages.push(`Damage resistance pool: Body (${defender.attributes.body}) + Modified armor (${Math.max(modified_armor, 0)}) + Wound modifier (${defender_wound_modifier_resistance}) + Situational modifiers (${defender.situational_modifiers}) = ${resistance_pool}`);
 
         const resistance_rolls = roll_d6(resistance_pool);
         const { hits: resistance_hits } = count_hits_and_ones(resistance_rolls);
@@ -173,18 +173,23 @@ function resolve_attack(attacker: Character, defender: Character, weapon: Weapon
         } else {
             apply_damage(defender, damage_taken, weapon.damageType);
             attacker.total_damage_dealt += damage_taken;
-            result.status_changes = defender.check_status();
+            result.status_changes = defender.getStatusChanges();
             result.messages.push(`${defender.name} takes ${damage_taken} ${weapon.damageType} damage.`);
+            
+            // Add status update message
+            if (result.status_changes.length > 0) {
+                result.messages.push(`${defender.name}'s status changed: ${result.status_changes.join(', ')}`);
+            }
         }
     } else {
         // Ranged attack
         const base_pool = attacker.attributes.agility + (attacker.skills['firearms'] || 0);
         const range_modifier = get_range_modifier(weapon.type, distance);
         const recoil_modifier = calculate_recoil(attacker, weapon, fire_mode);
-        attacker.calculate_wound_modifier();
-        const modifiers = range_modifier + recoil_modifier + attacker.wound_modifier + attacker.situational_modifiers;
+        const wound_modifier = calculate_wound_modifier(attacker);
+        const modifiers = range_modifier + recoil_modifier + wound_modifier + attacker.situational_modifiers;
         const total_attack_pool = Math.max(base_pool + modifiers, 1);
-        result.messages.push(`Ranged Attack: Base pool (${base_pool}) + Range modifier (${range_modifier}) + Recoil modifier (${recoil_modifier}) + Wound modifier (${attacker.wound_modifier}) + Situational modifiers (${attacker.situational_modifiers}) = Total attack pool (${total_attack_pool})`);
+        result.messages.push(`Ranged Attack: Base pool (${base_pool}) + Range modifier (${range_modifier}) + Recoil modifier (${recoil_modifier}) + Wound modifier (${wound_modifier}) + Situational modifiers (${attacker.situational_modifiers}) = Total attack pool (${total_attack_pool})`);
 
         const attack_rolls = roll_d6(total_attack_pool);
         const { hits: attack_hits, ones: attack_ones, isGlitch, isCriticalGlitch } = count_hits_and_ones(attack_rolls);
@@ -222,10 +227,10 @@ function resolve_attack(attacker: Character, defender: Character, weapon: Weapon
         } else if (fire_mode === 'FA') {
             defense_modifiers -= 5;
         }
-        defender.calculate_wound_modifier();
-        defense_modifiers += defender.wound_modifier + defender.situational_modifiers;
+        const defender_wound_modifier = calculate_wound_modifier(defender);
+        defense_modifiers += defender_wound_modifier + defender.situational_modifiers;
         const total_defense_pool = Math.max(base_defense_pool + defense_modifiers, 1);
-        result.messages.push(`Defense: Base pool (${base_defense_pool}) + Defense modifiers (${defense_modifiers}) + Wound modifier (${defender.wound_modifier}) + Situational modifiers (${defender.situational_modifiers}) = Total defense pool (${total_defense_pool})`);
+        result.messages.push(`Defense: Base pool (${base_defense_pool}) + Defense modifiers (${defense_modifiers}) + Wound modifier (${defender_wound_modifier}) + Situational modifiers (${defender.situational_modifiers}) = Total defense pool (${total_defense_pool})`);
 
         const defense_rolls = roll_d6(total_defense_pool);
         const { hits: defense_hits } = count_hits_and_ones(defense_rolls);
@@ -242,7 +247,7 @@ function resolve_attack(attacker: Character, defender: Character, weapon: Weapon
         }
 
         // Calculate total damage
-        const base_damage = parseInt(weapon.damage);
+        const base_damage = weapon.damage;
         const total_damage = base_damage + net_hits;
         result.messages.push(`Damage: Base (${base_damage}) + Net hits (${net_hits}) = Total damage (${total_damage})`);
 
@@ -252,10 +257,10 @@ function resolve_attack(attacker: Character, defender: Character, weapon: Weapon
 
         // Damage resistance test
         let resistance_pool = defender.attributes.body + Math.max(modified_armor, 0);
-        defender.calculate_wound_modifier();
-        resistance_pool += defender.wound_modifier + defender.situational_modifiers;
+        const defender_wound_modifier_resistance = calculate_wound_modifier(defender);
+        resistance_pool += defender_wound_modifier_resistance + defender.situational_modifiers;
         resistance_pool = Math.max(resistance_pool, 1);
-        result.messages.push(`Damage resistance pool: Body (${defender.attributes.body}) + Modified armor (${Math.max(modified_armor, 0)}) + Wound modifier (${defender.wound_modifier}) + Situational modifiers (${defender.situational_modifiers}) = ${resistance_pool}`);
+        result.messages.push(`Damage resistance pool: Body (${defender.attributes.body}) + Modified armor (${Math.max(modified_armor, 0)}) + Wound modifier (${defender_wound_modifier_resistance}) + Situational modifiers (${defender.situational_modifiers}) = ${resistance_pool}`);
 
         const resistance_rolls = roll_d6(resistance_pool);
         const { hits: resistance_hits } = count_hits_and_ones(resistance_rolls);
@@ -272,8 +277,13 @@ function resolve_attack(attacker: Character, defender: Character, weapon: Weapon
         } else {
             apply_damage(defender, damage_taken, weapon.damageType);
             attacker.total_damage_dealt += damage_taken;
-            result.status_changes = defender.check_status();
+            result.status_changes = defender.getStatusChanges();
             result.messages.push(`${defender.name} takes ${damage_taken} ${weapon.damageType} damage.`);
+            
+            // Add status update message
+            if (result.status_changes.length > 0) {
+                result.messages.push(`${defender.name}'s status changed: ${result.status_changes.join(', ')}`);
+            }
         }
 
     }
@@ -281,16 +291,33 @@ function resolve_attack(attacker: Character, defender: Character, weapon: Weapon
     return result;
 }
 
-function apply_damage(character: Character, damage: number, damage_type: string): void {
+function apply_damage(character: CombatCharacter, damage: number, damage_type: string): void {
     if (damage_type === 'P') {
         character.physical_damage += damage;
     } else if (damage_type === 'S') {
         character.stun_damage += damage;
     }
-    character.calculate_wound_modifier();
+    
+    const maxPhysicalHealth = calculateMaxPhysicalHealth(character.attributes.body);
+    const maxStunHealth = calculateMaxStunHealth(character.attributes.willpower);
+
+    // Check if stun damage overflows to physical damage
+    if (character.stun_damage > maxStunHealth) {
+        const overflow = character.stun_damage - maxStunHealth;
+        character.physical_damage += overflow;
+        character.stun_damage = maxStunHealth;
+    }
+
+    // Check if character dies from physical damage
+    if (character.physical_damage > maxPhysicalHealth) {
+        character.is_alive = false;
+        character.is_conscious = false;
+    } else {
+        character.is_conscious = character.stun_damage < maxStunHealth;
+    }
 }
 
-function check_combat_end(match_characters: Character[]): boolean {
+function check_combat_end(match_characters: CombatCharacter[]): boolean {
     const active_factions = new Set<string>();
     for (const c of match_characters) {
         if (c.is_conscious && c.is_alive) {
@@ -300,7 +327,7 @@ function check_combat_end(match_characters: Character[]): boolean {
     return active_factions.size <= 1;
 }
 
-function select_best_weapon(character: Character, distance: number): Weapon {
+function select_best_weapon(character: CombatCharacter, distance: number): Weapon {
     let best_weapon: Weapon | null = null;
     let best_modifier = -Infinity;
     for (const weapon of character.weapons) {

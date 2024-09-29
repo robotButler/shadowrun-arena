@@ -192,7 +192,7 @@ export function CharacterManagement({
                       <span>
                         {weapon.name} - {weapon.damage} {weapon.damageType} ({weapon.type}) | 
                         AP: {weapon.ap} | RC: {weapon.recoilComp} | ACC: {weapon.accuracy} | 
-                        {weapon.type === 'Ranged' ? `Ammo: ${weapon.ammoCount} | Modes: ${weapon.fireModes.join(', ')}` : `Reach: ${weapon.reach}`}
+                        {weapon.type === 'Ranged' ? `Ammo: ${weapon.ammoCount} | Modes: ${weapon.fireModes?.join(', ') ?? 'N/A'}` : `Reach: ${weapon.reach}`}
                       </span>
                       <Button type="button" variant="outline" size="sm" onClick={() => handleRemoveWeapon(index)}>Remove</Button>
                     </div>
@@ -215,8 +215,9 @@ export function CharacterManagement({
                         <Label htmlFor="weaponDamage">Damage</Label>
                         <Input
                           id="weaponDamage"
+                          type="number"
                           value={newWeapon.damage}
-                          onChange={(e) => setNewWeapon({ ...newWeapon, damage: e.target.value })}
+                          onChange={(e) => setNewWeapon({ ...newWeapon, damage: e.target.value ? parseInt(e.target.value) : 0 })}
                           required
                         />
                       </div>
@@ -271,7 +272,7 @@ export function CharacterManagement({
                           <div className="flex flex-col space-y-1.5">
                             <Label htmlFor="recoilComp">Recoil Comp</Label>
                             <Select
-                              value={newWeapon.recoilComp.toString()}
+                              value={(newWeapon.recoilComp ?? 0).toString()}
                               onValueChange={(value) => setNewWeapon({ ...newWeapon, recoilComp: parseInt(value) })}
                             >
                               <SelectTrigger id="recoilComp">
@@ -301,7 +302,7 @@ export function CharacterManagement({
                         <div className="flex flex-col space-y-1.5">
                           <Label htmlFor="reach">Reach</Label>
                           <Select
-                            value={newWeapon.reach.toString()}
+                            value={newWeapon.reach?.toString() ?? ''}
                             onValueChange={(value) => setNewWeapon({ ...newWeapon, reach: parseInt(value) })}
                           >
                             <SelectTrigger id="reach">
@@ -338,12 +339,12 @@ export function CharacterManagement({
                             {(['SS', 'SA', 'BF', 'FA'] as FireMode[]).map(mode => (
                               <label key={mode} className="flex items-center space-x-2">
                                 <Checkbox
-                                  checked={newWeapon.fireModes.includes(mode)}
+                                  checked={newWeapon.fireModes?.includes(mode) ?? false}
                                   onCheckedChange={(checked) => {
                                     if (checked) {
-                                      setNewWeapon({ ...newWeapon, fireModes: [...newWeapon.fireModes, mode] })
+                                      setNewWeapon({ ...newWeapon, fireModes: [...(newWeapon.fireModes ?? []), mode] })
                                     } else {
-                                      setNewWeapon({ ...newWeapon, fireModes: newWeapon.fireModes.filter(m => m !== mode) })
+                                      setNewWeapon({ ...newWeapon, fireModes: (newWeapon.fireModes ?? []).filter(m => m !== mode) })
                                     }
                                   }}
                                 />
