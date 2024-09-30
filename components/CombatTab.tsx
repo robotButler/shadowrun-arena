@@ -860,6 +860,12 @@ export function CombatTab({
                       )}
                     </div>
                     <Button onClick={() => {
+                      const currentChar = combatCharacters[currentCharacterIndex];
+                      if (!currentChar.is_alive || !currentChar.is_conscious) {
+                        toast.error("Current character is incapacitated and cannot act.");
+                        nextCharacter();
+                        return;
+                      }
                       if (selectedActionType === 'Simple') {
                         handleSimpleActionsHandler();
                       } else if (selectedActionType === 'Complex') {

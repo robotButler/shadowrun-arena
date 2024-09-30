@@ -176,6 +176,13 @@ function resolve_attack(attacker: CombatCharacter, defender: CombatCharacter, we
             result.status_changes = defender.getStatusChanges();
             result.messages.push(`${defender.name} takes ${damage_taken} ${weapon.damageType} damage.`);
             
+            // Add this block
+            if (!defender.is_alive) {
+                result.messages.push(`${defender.name} has died!`);
+            } else if (!defender.is_conscious) {
+                result.messages.push(`${defender.name} has fallen unconscious!`);
+            }
+            
             // Add status update message
             if (result.status_changes.length > 0) {
                 result.messages.push(`${defender.name}'s status changed: ${result.status_changes.join(', ')}`);
@@ -280,6 +287,13 @@ function resolve_attack(attacker: CombatCharacter, defender: CombatCharacter, we
             result.status_changes = defender.getStatusChanges();
             result.messages.push(`${defender.name} takes ${damage_taken} ${weapon.damageType} damage.`);
             
+            // Add this block
+            if (!defender.is_alive) {
+                result.messages.push(`${defender.name} has died!`);
+            } else if (!defender.is_conscious) {
+                result.messages.push(`${defender.name} has fallen unconscious!`);
+            }
+            
             // Add status update message
             if (result.status_changes.length > 0) {
                 result.messages.push(`${defender.name}'s status changed: ${result.status_changes.join(', ')}`);
@@ -320,7 +334,7 @@ function apply_damage(character: CombatCharacter, damage: number, damage_type: s
 function check_combat_end(match_characters: CombatCharacter[]): boolean {
     const active_factions = new Set<string>();
     for (const c of match_characters) {
-        if (c.is_conscious && c.is_alive) {
+        if (c.is_alive && c.is_conscious) {
             active_factions.add(c.faction);
         }
     }

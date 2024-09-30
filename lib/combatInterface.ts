@@ -330,6 +330,14 @@ export const handleComplexAction = (
         char
       );
 
+      // Add this block
+      updatedChars = updatedChars.map(char => {
+        if (!char.is_alive || !char.is_conscious) {
+          return { ...char, current_initiative: -1 }; // Remove from initiative order
+        }
+        return char;
+      });
+
       combatEnded = check_combat_end(updatedChars);
       if (combatEnded) {
         actionLog.details.push("Combat has ended!");
