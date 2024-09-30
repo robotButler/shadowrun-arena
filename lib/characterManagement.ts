@@ -64,13 +64,13 @@ export const deleteCharacter = (id: string, characters: Character[], setCharacte
 
 export const addToFaction = (characterId: string, faction: 'faction1' | 'faction2', faction1: string[], setFaction1: React.Dispatch<React.SetStateAction<string[]>>, faction2: string[], setFaction2: React.Dispatch<React.SetStateAction<string[]>>, setFactionModifiers: React.Dispatch<React.SetStateAction<Record<string, number>>>) => {
   if (faction === 'faction1') {
-    setFaction1([...faction1, characterId])
-    setFaction2(faction2.filter(id => id !== characterId))
+    setFaction1(prev => [...prev, characterId]);
+    setFaction2(prev => prev.filter(id => id !== characterId));
   } else {
-    setFaction2([...faction2, characterId])
-    setFaction1(faction1.filter(id => id !== characterId))
+    setFaction2(prev => [...prev, characterId]);
+    setFaction1(prev => prev.filter(id => id !== characterId));
   }
-  setFactionModifiers(prevModifiers => ({ ...prevModifiers, [characterId]: 0 }))
+  setFactionModifiers(prev => ({ ...prev, [characterId]: 0 }));
 }
 
 export const removeFromFaction = (characterId: string, faction: 'faction1' | 'faction2', setFaction1: React.Dispatch<React.SetStateAction<string[]>>, setFaction2: React.Dispatch<React.SetStateAction<string[]>>, setFactionModifiers: React.Dispatch<React.SetStateAction<Record<string, number>>>) => {

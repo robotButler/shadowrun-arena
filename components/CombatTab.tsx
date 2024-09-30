@@ -48,6 +48,8 @@ export function CombatTab({
   handleAddToFaction: (characterId: string, faction: 'faction1' | 'faction2') => void
   handleRemoveFromFaction: (characterId: string, faction: 'faction1' | 'faction2') => void
 }) {
+  console.log("CombatTab received factions:", { faction1, faction2 });
+
   const [isCombatActive, setIsCombatActive] = useState(false);
   const [combatCharacters, setCombatCharacters] = useState<CombatCharacter[]>([]);
   const [currentInitiativePhase, setCurrentInitiativePhase] = useState(0);
@@ -78,11 +80,24 @@ export function CombatTab({
   const [isSelectingMoveTarget, setIsSelectingMoveTarget] = useState(false);
   const [maxMoveDistance, setMaxMoveDistance] = useState(0);
 
+  console.log("CombatTab props:", { 
+    characters, 
+    faction1, 
+    faction2, 
+    factionModifiers 
+  });
+
   useEffect(() => {
     if (faction1.length > 0 || faction2.length > 0) {
       generateNewMap();
     }
   }, [faction1, faction2]);
+
+  useEffect(() => {
+    if (isCombatActive) {
+      console.log("Factions changed during active combat:", { faction1, faction2 });
+    }
+  }, [faction1, faction2, isCombatActive]);
 
   const generateNewMap = () => {
     const newMap = generate_map(mapSize, partialCoverProb, hardCoverProb);
@@ -462,7 +477,7 @@ export function CombatTab({
     const currentChar = combatCharacters[currentCharacterIndex];
     const moveDistance = Math.floor(calculateDistance(currentChar.position, position));
 
-    if (moveDistance > currentChar.movement_remaining) {
+    if (moveDistance > remainingMovement) {
       toast.error("Selected position is too far away.");
       return;
     }
@@ -477,19 +492,21 @@ export function CombatTab({
       return;
     }
 
-    const updatedChars = [...combatCharacters];
-    updatedChars[currentCharacterIndex] = {
-      ...updatedChars[currentCharacterIndex],
-      position: position,
-      movement_remaining: updatedChars[currentCharacterIndex].movement_remaining - moveDistance
-    };
+    setCombatCharacters(prevChars => {
+      const updatedChars = [...prevChars];
+      updatedChars[currentCharacterIndex] = {
+        ...updatedChars[currentCharacterIndex],
+        position: position,
+        movement_remaining: updatedChars[currentCharacterIndex].movement_remaining - moveDistance
+      };
+      return updatedChars;
+    });
 
-    setCombatCharacters(updatedChars);
     setIsSelectingMoveTarget(false);
-    setRemainingMovement(updatedChars[currentCharacterIndex].movement_remaining);
+    setRemainingMovement(prev => prev - moveDistance);
     setActionLog(prev => [...prev, { 
       summary: `${currentChar.name} moved ${moveDistance} meters.`, 
-      details: [`New position: (${position.x}, ${position.y})`, `Remaining movement: ${updatedChars[currentCharacterIndex].movement_remaining} meters`] 
+      details: [`New position: (${position.x}, ${position.y})`, `Remaining movement: ${remainingMovement - moveDistance} meters`] 
     }]);
   };
 
@@ -612,6 +629,8 @@ export function CombatTab({
                     map={gameMap} 
                     onCellClick={handleMapCellClick}
                     placedCharacters={placedCharacters}
+                    faction1={faction1}
+                    faction2={faction2}
                   />
                 )}
               </div>
@@ -624,294 +643,295 @@ export function CombatTab({
         </Card>
       )}
       
-      {isMapAccepted && (
-        <>
-          {isCombatActive && combatCharacters.length > 0 && gameMap && (
-            <Card className="mt-4">
-              <CardHeader>
-                <CardTitle>Combat Simulation</CardTitle>
-                <CardDescription>Initiative Phase: {currentInitiativePhase}</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-4">
-                    <div>
-                      <h3 className="font-semibold">Current Character: {combatCharacters[currentCharacterIndex].name}</h3>
-                      <p>Faction: {combatCharacters[currentCharacterIndex].faction}</p>
-                      <p>Position: {combatCharacters[currentCharacterIndex].position.x}, {combatCharacters[currentCharacterIndex].position.y}</p>
-                      <p>Current Initiative: {combatCharacters[currentCharacterIndex].current_initiative}</p>
-                      {(() => {
-                        const currentChar = combatCharacters[currentCharacterIndex];
-                        const maxPhysical = calculateMaxPhysicalHealth(currentChar.attributes.body);
-                        const maxStun = calculateMaxStunHealth(currentChar.attributes.willpower);
-                        return (
-                          <>
-                            <p>Physical Damage: {currentChar.physical_damage} / {maxPhysical}</p>
-                            <p>Stun Damage: {currentChar.stun_damage} / {maxStun}</p>
-                            <p>Status: {currentChar.is_alive ? (currentChar.is_conscious ? 'Conscious' : 'Unconscious') : 'Dead'}</p>
-                          </>
-                        );
-                      })()}
-                    </div>
-                    <div>
-                      <h4 className="font-semibold">Action Type</h4>
-                      <div className="flex space-x-2">
-                        <Button
-                          variant={selectedActionType === 'Simple' ? 'default' : 'outline'}
-                          onClick={() => handleActionTypeSelection('Simple')}
+      {isMapAccepted && isCombatActive && combatCharacters.length > 0 && gameMap && (
+        <Card className="mt-4">
+          <CardHeader>
+            <CardTitle>Combat Simulation</CardTitle>
+            <CardDescription>Initiative Phase: {currentInitiativePhase}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-4">
+                <div>
+                  <h3 className="font-semibold">Current Character: {combatCharacters[currentCharacterIndex].name}</h3>
+                  <p>Faction: {combatCharacters[currentCharacterIndex].faction}</p>
+                  <p>Position: {combatCharacters[currentCharacterIndex].position.x}, {combatCharacters[currentCharacterIndex].position.y}</p>
+                  <p>Current Initiative: {combatCharacters[currentCharacterIndex].current_initiative}</p>
+                  {(() => {
+                    const currentChar = combatCharacters[currentCharacterIndex];
+                    const maxPhysical = calculateMaxPhysicalHealth(currentChar.attributes.body);
+                    const maxStun = calculateMaxStunHealth(currentChar.attributes.willpower);
+                    return (
+                      <>
+                        <p>Physical Damage: {currentChar.physical_damage} / {maxPhysical}</p>
+                        <p>Stun Damage: {currentChar.stun_damage} / {maxStun}</p>
+                        <p>Status: {currentChar.is_alive ? (currentChar.is_conscious ? 'Conscious' : 'Unconscious') : 'Dead'}</p>
+                      </>
+                    );
+                  })()}
+                </div>
+                <div>
+                  <h4 className="font-semibold">Action Type</h4>
+                  <div className="flex space-x-2">
+                    <Button
+                      variant={selectedActionType === 'Simple' ? 'default' : 'outline'}
+                      onClick={() => handleActionTypeSelection('Simple')}
+                    >
+                      Simple Actions (2)
+                    </Button>
+                    <Button
+                      variant={selectedActionType === 'Complex' ? 'default' : 'outline'}
+                      onClick={() => handleActionTypeSelection('Complex')}
+                    >
+                      Complex Action (1)
+                    </Button>
+                  </div>
+                </div>
+                {selectedActionType === 'Simple' && (
+                  <div>
+                    <h5 className="font-semibold">Simple Actions</h5>
+                    {[0, 1].map((index) => (
+                      <div key={index} className="space-y-2">
+                        <Select 
+                          value={selectedSimpleActions[index] || ''} 
+                          onValueChange={(value) => handleSimpleActionSelection(value as SimpleAction, index)}
                         >
-                          Simple Actions (2)
-                        </Button>
-                        <Button
-                          variant={selectedActionType === 'Complex' ? 'default' : 'outline'}
-                          onClick={() => handleActionTypeSelection('Complex')}
-                        >
-                          Complex Action (1)
-                        </Button>
-                      </div>
-                    </div>
-                    {selectedActionType === 'Simple' && (
-                      <div>
-                        <h5 className="font-semibold">Simple Actions</h5>
-                        {[0, 1].map((index) => (
-                          <div key={index} className="space-y-2">
-                            <Select 
-                              value={selectedSimpleActions[index] || ''} 
-                              onValueChange={(value) => handleSimpleActionSelection(value as SimpleAction, index)}
-                            >
-                              <SelectTrigger>
-                                <SelectValue placeholder={`Select Simple Action ${index + 1}`} />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="CallShot">Call Shot</SelectItem>
-                                <SelectItem value="ChangeFireMode">Change Fire Mode</SelectItem>
-                                <SelectItem value="FireRangedWeapon">Fire Ranged Weapon</SelectItem>
-                                <SelectItem value="ReloadWeapon">Reload Weapon</SelectItem>
-                                <SelectItem value="TakeAim">Take Aim</SelectItem>
-                                <SelectItem value="TakeCover">Take Cover</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            {(selectedSimpleActions[index] === 'FireRangedWeapon' || 
-                              selectedSimpleActions[index] === 'ReloadWeapon' || 
-                              selectedSimpleActions[index] === 'ChangeFireMode') && (
-                              <Select 
-                                value={selectedWeapons[index] ? JSON.stringify(selectedWeapons[index]) : ''}
-                                onValueChange={(value) => handleWeaponSelection(JSON.parse(value), index)}
-                              >
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Select Weapon" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {combatCharacters[currentCharacterIndex].weapons
-                                    .filter(w => w.type === 'Ranged')
-                                    .map((weapon, i) => (
-                                      <SelectItem key={i} value={JSON.stringify(weapon)}>{weapon.name}</SelectItem>
-                                    ))
-                                  }
-                                </SelectContent>
-                              </Select>
-                            )}
-                            {selectedSimpleActions[index] === 'FireRangedWeapon' && (
-                              <Select 
-                                value={selectedTargets[index] || ''}
-                                onValueChange={(value) => handleTargetSelection(value, index)}
-                              >
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Select Target" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {combatCharacters
-                                    .filter(c => c.faction !== combatCharacters[currentCharacterIndex].faction && c.is_conscious)
-                                    .map((target) => (
-                                      <SelectItem key={target.id} value={target.id}>{target.name}</SelectItem>
-                                    ))
-                                  }
-                                </SelectContent>
-                              </Select>
-                            )}
-                            {selectedSimpleActions[index] === 'ChangeFireMode' && selectedWeapons[index] && (
-                              <Select
-                                value={selectedWeapons[index]?.currentFireMode || ''}
-                                onValueChange={(value) => handleFireModeChangeHandler(combatCharacters[currentCharacterIndex].weapons.findIndex(w => w.name === selectedWeapons[index]?.name), value as FireMode)}
-                              >
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Select Fire Mode" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {selectedWeapons[index]?.fireModes?.map((mode) => (
-                                    <SelectItem key={mode} value={mode}>{mode}</SelectItem>
-                                  )) ?? []}
-                                </SelectContent>
-                              </Select>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {selectedActionType === 'Complex' && (
-                      <div>
-                        <h5 className="font-semibold">Complex Action</h5>
-                        <Select onValueChange={(value) => handleComplexActionSelection(value as ComplexAction)}>
                           <SelectTrigger>
-                            <SelectValue placeholder="Select Complex Action" />
+                            <SelectValue placeholder={`Select Simple Action ${index + 1}`} />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="FireWeapon">Fire Weapon</SelectItem>
-                            <SelectItem value="MeleeAttack">Melee Attack</SelectItem>
-                            <SelectItem value="Sprint">Sprint</SelectItem>
+                            <SelectItem value="CallShot">Call Shot</SelectItem>
+                            <SelectItem value="ChangeFireMode">Change Fire Mode</SelectItem>
+                            <SelectItem value="FireRangedWeapon">Fire Ranged Weapon</SelectItem>
+                            <SelectItem value="ReloadWeapon">Reload Weapon</SelectItem>
+                            <SelectItem value="TakeAim">Take Aim</SelectItem>
+                            <SelectItem value="TakeCover">Take Cover</SelectItem>
                           </SelectContent>
                         </Select>
-                        {(selectedComplexAction === 'FireWeapon' || selectedComplexAction === 'MeleeAttack') && (
-                          <>
-                            <Select onValueChange={(value) => handleWeaponSelection(JSON.parse(value), 0)}>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select Weapon" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {combatCharacters[currentCharacterIndex].weapons
-                                  .filter(w => selectedComplexAction === 'FireWeapon' ? w.type === 'Ranged' : w.type === 'Melee')
-                                  .map((weapon, i) => (
-                                    <SelectItem key={i} value={JSON.stringify(weapon)}>{weapon.name}</SelectItem>
-                                  ))
-                                }
-                              </SelectContent>
-                            </Select>
-                            <Select onValueChange={(value) => handleTargetSelection(value, 0)}>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select Target" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {combatCharacters
-                                  .filter(c => c.faction !== combatCharacters[currentCharacterIndex].faction && c.is_conscious)
-                                  .map((target) => (
-                                    <SelectItem key={target.id} value={target.id}>{target.name}</SelectItem>
-                                  ))
-                                }
-                              </SelectContent>
-                            </Select>
-                          </>
-                        )}
-                      </div>
-                    )}
-                    <div>
-                      <h5 className="font-semibold">Free Action</h5>
-                      <div className="flex space-x-2">
-                        <Button
-                          variant={selectedFreeAction === 'CallShot' ? 'default' : 'outline'}
-                          onClick={() => handleFreeActionSelection('CallShot')}
-                        >
-                          Call Shot
-                        </Button>
-                        <Button
-                          variant={selectedFreeAction === 'ChangeFireMode' ? 'default' : 'outline'}
-                          onClick={() => handleFreeActionSelection('ChangeFireMode')}
-                        >
-                          Change Fire Mode
-                        </Button>
-                        <Button
-                          variant={isRunning ? 'default' : 'outline'}
-                          onClick={handleRunAction}
-                          disabled={isRunning}
-                        >
-                          <Play className="mr-2 h-4 w-4" /> Run
-                        </Button>
-                      </div>
-                      {selectedFreeAction === 'ChangeFireMode' && (
-                        <div className="mt-2">
-                          <Select onValueChange={(value) => {
-                            const [weaponIndex, newFireMode] = value.split('|')
-                            handleFireModeChangeHandler(parseInt(weaponIndex), newFireMode as FireMode)
-                          }}>
+                        {(selectedSimpleActions[index] === 'FireRangedWeapon' || 
+                          selectedSimpleActions[index] === 'ReloadWeapon' || 
+                          selectedSimpleActions[index] === 'ChangeFireMode') && (
+                          <Select 
+                            value={selectedWeapons[index] ? JSON.stringify(selectedWeapons[index]) : ''}
+                            onValueChange={(value) => handleWeaponSelection(JSON.parse(value), index)}
+                          >
                             <SelectTrigger>
-                              <SelectValue placeholder="Select Weapon and New Fire Mode" />
+                              <SelectValue placeholder="Select Weapon" />
                             </SelectTrigger>
                             <SelectContent>
                               {combatCharacters[currentCharacterIndex].weapons
                                 .filter(w => w.type === 'Ranged')
-                                .map((weapon, weaponIndex) => 
-                                  weapon.fireModes?.map(mode => (
-                                    <SelectItem key={`${weaponIndex}-${mode}`} value={`${weaponIndex}|${mode}`}>
-                                      {weapon.name} - {mode}
-                                    </SelectItem>
-                                  ))
-                                )
+                                .map((weapon, i) => (
+                                  <SelectItem key={i} value={JSON.stringify(weapon)}>{weapon.name}</SelectItem>
+                                ))
                               }
                             </SelectContent>
                           </Select>
-                        </div>
-                      )}
-                      {isRunning && (
-                        <p className="mt-2">Character is running. Movement distance doubled for this turn.</p>
-                      )}
-                    </div>
-                    <div>
-                      <h5 className="font-semibold">Movement</h5>
-                      <p>Max Move Distance: {maxMoveDistance} meters</p>
-                      <p>Remaining Move Distance: {remainingMovement} meters</p>
-                      <Button 
-                        onClick={handleMoveButtonClick}
-                        disabled={isSelectingMoveTarget || remainingMovement <= 0}
-                      >
-                        {isSelectingMoveTarget ? 'Selecting Move Target...' : 'Select Move Target'}
-                      </Button>
-                      {isSelectingMoveTarget && (
-                        <p className="mt-2">Click on the map to select your move target.</p>
-                      )}
-                    </div>
-                    <Button onClick={() => {
-                      const currentChar = combatCharacters[currentCharacterIndex];
-                      if (!currentChar.is_alive || !currentChar.is_conscious) {
-                        toast.error("Current character is incapacitated and cannot act.");
-                        nextCharacter();
-                        return;
-                      }
-                      if (selectedActionType === 'Simple') {
-                        handleSimpleActionsHandler();
-                      } else if (selectedActionType === 'Complex') {
-                        handleComplexActionHandler();
-                      } else if (selectedFreeAction) {
-                        setActionLog(prev => [...prev, { summary: `${combatCharacters[currentCharacterIndex].name} performed a ${selectedFreeAction} action.`, details: [] }]);
-                        clearInputs();
-                        nextCharacter();
-                      } else if (movementDistance > 0) {
-                        handleMovementHandler();
-                      } else {
-                        toast.error('Please select an action type, enter a movement distance, or choose a free action');
-                      }
-                    }}>
-                      Perform Action
+                        )}
+                        {selectedSimpleActions[index] === 'FireRangedWeapon' && (
+                          <Select 
+                            value={selectedTargets[index] || ''}
+                            onValueChange={(value) => handleTargetSelection(value, index)}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select Target" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {combatCharacters
+                                .filter(c => c.faction !== combatCharacters[currentCharacterIndex].faction && c.is_conscious)
+                                .map((target) => (
+                                  <SelectItem key={target.id} value={target.id}>{target.name}</SelectItem>
+                                ))
+                              }
+                            </SelectContent>
+                          </Select>
+                        )}
+                        {selectedSimpleActions[index] === 'ChangeFireMode' && selectedWeapons[index] && (
+                          <Select
+                            value={selectedWeapons[index]?.currentFireMode || ''}
+                            onValueChange={(value) => handleFireModeChangeHandler(combatCharacters[currentCharacterIndex].weapons.findIndex(w => w.name === selectedWeapons[index]?.name), value as FireMode)}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select Fire Mode" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {selectedWeapons[index]?.fireModes?.map((mode) => (
+                                <SelectItem key={mode} value={mode}>{mode}</SelectItem>
+                              )) ?? []}
+                            </SelectContent>
+                          </Select>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {selectedActionType === 'Complex' && (
+                  <div>
+                    <h5 className="font-semibold">Complex Action</h5>
+                    <Select onValueChange={(value) => handleComplexActionSelection(value as ComplexAction)}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select Complex Action" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="FireWeapon">Fire Weapon</SelectItem>
+                        <SelectItem value="MeleeAttack">Melee Attack</SelectItem>
+                        <SelectItem value="Sprint">Sprint</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {(selectedComplexAction === 'FireWeapon' || selectedComplexAction === 'MeleeAttack') && (
+                      <>
+                        <Select onValueChange={(value) => handleWeaponSelection(JSON.parse(value), 0)}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select Weapon" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {combatCharacters[currentCharacterIndex].weapons
+                              .filter(w => selectedComplexAction === 'FireWeapon' ? w.type === 'Ranged' : w.type === 'Melee')
+                              .map((weapon, i) => (
+                                <SelectItem key={i} value={JSON.stringify(weapon)}>{weapon.name}</SelectItem>
+                              ))
+                            }
+                          </SelectContent>
+                        </Select>
+                        <Select onValueChange={(value) => handleTargetSelection(value, 0)}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select Target" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {combatCharacters
+                              .filter(c => c.faction !== combatCharacters[currentCharacterIndex].faction && c.is_conscious)
+                              .map((target) => (
+                                <SelectItem key={target.id} value={target.id}>{target.name}</SelectItem>
+                              ))
+                            }
+                          </SelectContent>
+                        </Select>
+                      </>
+                    )}
+                  </div>
+                )}
+                <div>
+                  <h5 className="font-semibold">Free Action</h5>
+                  <div className="flex space-x-2">
+                    <Button
+                      variant={selectedFreeAction === 'CallShot' ? 'default' : 'outline'}
+                      onClick={() => handleFreeActionSelection('CallShot')}
+                    >
+                      Call Shot
+                    </Button>
+                    <Button
+                      variant={selectedFreeAction === 'ChangeFireMode' ? 'default' : 'outline'}
+                      onClick={() => handleFreeActionSelection('ChangeFireMode')}
+                    >
+                      Change Fire Mode
+                    </Button>
+                    <Button
+                      variant={isRunning ? 'default' : 'outline'}
+                      onClick={handleRunAction}
+                      disabled={isRunning}
+                    >
+                      <Play className="mr-2 h-4 w-4" /> Run
                     </Button>
                   </div>
-                  <div>
-                    <h3 className="font-semibold mb-2">Combat Map</h3>
-                    <MapDisplay 
-                      map={gameMap}
-                      placedCharacters={placedCharacters}
-                      onCellClick={handleMapClick}
-                      currentCharacter={combatCharacters[currentCharacterIndex]}
-                      maxMoveDistance={remainingMovement}
-                      isSelectingMoveTarget={isSelectingMoveTarget}
-                    />
-                  </div>
+                  {selectedFreeAction === 'ChangeFireMode' && (
+                    <div className="mt-2">
+                      <Select onValueChange={(value) => {
+                        const [weaponIndex, newFireMode] = value.split('|')
+                        handleFireModeChangeHandler(parseInt(weaponIndex), newFireMode as FireMode)
+                      }}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select Weapon and New Fire Mode" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {combatCharacters[currentCharacterIndex].weapons
+                            .filter(w => w.type === 'Ranged')
+                            .map((weapon, weaponIndex) => 
+                              weapon.fireModes?.map(mode => (
+                                <SelectItem key={`${weaponIndex}-${mode}`} value={`${weaponIndex}|${mode}`}>
+                                  {weapon.name} - {mode}
+                                </SelectItem>
+                              ))
+                            )
+                          }
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                  {isRunning && (
+                    <p className="mt-2">Character is running. Movement distance doubled for this turn.</p>
+                  )}
                 </div>
-              </CardContent>
-            </Card>
-          )}
-          {actionLog.length > 0 && (
-            <Card className="mt-4">
-              <CardHeader>
-                <CardTitle>Action Log</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ScrollArea className="h-[600px] w-full rounded-md border p-4">
-                  {actionLog.map((log, index) => (
-                    <ActionLogEntry key={index} summary={log.summary} details={log.details} />
-                  ))}
-                </ScrollArea>
-              </CardContent>
-            </Card>
-          )}
-        </>
+                <div>
+                  <h5 className="font-semibold">Movement</h5>
+                  <p>Max Move Distance: {maxMoveDistance} meters</p>
+                  <p>Remaining Move Distance: {remainingMovement} meters</p>
+                  <Button 
+                    onClick={handleMoveButtonClick}
+                    disabled={isSelectingMoveTarget || remainingMovement <= 0}
+                  >
+                    {isSelectingMoveTarget ? 'Selecting Move Target...' : 'Select Move Target'}
+                  </Button>
+                  {isSelectingMoveTarget && (
+                    <p className="mt-2">Click on the map to select your move target.</p>
+                  )}
+                </div>
+                <Button onClick={() => {
+                  const currentChar = combatCharacters[currentCharacterIndex];
+                  if (!currentChar.is_alive || !currentChar.is_conscious) {
+                    toast.error("Current character is incapacitated and cannot act.");
+                    nextCharacter();
+                    return;
+                  }
+                  if (selectedActionType === 'Simple') {
+                    handleSimpleActionsHandler();
+                  } else if (selectedActionType === 'Complex') {
+                    handleComplexActionHandler();
+                  } else if (selectedFreeAction) {
+                    setActionLog(prev => [...prev, { summary: `${combatCharacters[currentCharacterIndex].name} performed a ${selectedFreeAction} action.`, details: [] }]);
+                    clearInputs();
+                    nextCharacter();
+                  } else if (movementDistance > 0) {
+                    handleMovementHandler();
+                  } else {
+                    toast.error('Please select an action type, enter a movement distance, or choose a free action');
+                  }
+                }}>
+                  Perform Action
+                </Button>
+              </div>
+              <div>
+                <h3 className="font-semibold mb-2">Combat Map</h3>
+                <MapDisplay 
+                  map={gameMap}
+                  placedCharacters={combatCharacters.map(char => ({
+                    character: char,
+                    position: char.position
+                  }))}
+                  onCellClick={handleMapClick}
+                  currentCharacter={combatCharacters[currentCharacterIndex]}
+                  maxMoveDistance={remainingMovement}
+                  isSelectingMoveTarget={isSelectingMoveTarget}
+                  faction1={faction1}
+                  faction2={faction2}
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+      {actionLog.length > 0 && (
+        <Card className="mt-4">
+          <CardHeader>
+            <CardTitle>Action Log</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ScrollArea className="h-[600px] w-full rounded-md border p-4">
+              {actionLog.map((log, index) => (
+                <ActionLogEntry key={index} summary={log.summary} details={log.details} />
+              ))}
+            </ScrollArea>
+          </CardContent>
+        </Card>
       )}
     </>
   )

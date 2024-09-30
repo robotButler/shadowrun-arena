@@ -36,6 +36,10 @@ export function ShadowrunArena() {
     }
   }, [characters])
 
+  useEffect(() => {
+    console.log("Faction states updated:", { faction1, faction2 });
+  }, [faction1, faction2])
+
   const handleAddToFaction = (characterId: string, faction: 'faction1' | 'faction2') => {
     addToFaction(characterId, faction, faction1, setFaction1, faction2, setFaction2, setFactionModifiers);
   };

@@ -1,4 +1,5 @@
 import { Vector } from './types';
+import * as PF from 'pathfinding';
 
 // Enum for movement types according to Shadowrun 5e rules
 export enum MoveType {
@@ -89,13 +90,9 @@ export function move_char(
   start_pos: Vector,
   end_pos: Vector,
   move_type: MoveType,
-  gameMap: GameMap
+  gameMap: GameMap,
+  placedCharacters: Array<{character: Character, position: Vector}>
 ): MoveResultAndDetails {
-  // Calculate the distance
-  const dx = end_pos.x - start_pos.x;
-  const dy = end_pos.y - start_pos.y;
-  const distance = Math.sqrt(dx * dx + dy * dy);
-
   // Get movement allowance
   let movementAllowance = 0;
   switch (move_type) {
@@ -110,6 +107,43 @@ export function move_char(
       break;
   }
 
+  // Create a pathfinding grid
+  const grid = new PF.Grid(gameMap.width, gameMap.height);
+  gameMap.cells.forEach((cell, index) => {
+    const x = index % gameMap.width;
+    const y = Math.floor(index / gameMap.width);
+    if (cell === CellType.HardCover || cell === CellType.PartialCover) {
+      grid.setWalkableAt(x, y, false);
+    }
+  });
+
+  // Mark cells with other characters as unwalkable
+  placedCharacters.forEach(({ position }) => {
+    if (position.x !== start_pos.x || position.y !== start_pos.y) {
+      grid.setWalkableAt(position.x, position.y, false);
+    }
+  });
+
+  const finder = new PF.AStarFinder();
+  const path = finder.findPath(
+    start_pos.x,
+    start_pos.y,
+    end_pos.x,
+    end_pos.y,
+    grid
+  );
+
+  if (path.length === 0) {
+    return {
+      success: false,
+      path: [],
+      distance_moved: 0,
+      message: 'No valid path to the destination.',
+    };
+  }
+
+  const distance = path.length - 1; // Subtract 1 because the starting position is included
+
   if (distance > movementAllowance) {
     return {
       success: false,
@@ -119,40 +153,12 @@ export function move_char(
     };
   }
 
-  // Simple straight-line pathfinding (placeholder for actual pathfinding algorithm)
-  const path: Vector[] = [];
-  const steps = Math.ceil(distance);
-  for (let i = 1; i <= steps; i++) {
-    const x = start_pos.x + (dx * i) / steps;
-    const y = start_pos.y + (dy * i) / steps;
-    const tileX = Math.round(x);
-    const tileY = Math.round(y);
-
-    // Check for obstacles
-    if (
-      tileX < 0 ||
-      tileY < 0 ||
-      tileX >= gameMap.width ||
-      tileY >= gameMap.height ||
-      gameMap.cells[tileY * gameMap.width + tileX] === CellType.HardCover
-    ) {
-      return {
-        success: false,
-        path: [],
-        distance_moved: 0,
-        message: 'Path is blocked by an obstacle.',
-      };
-    }
-
-    path.push({ x: tileX, y: tileY });
-  }
-
-  const distanceMoved = path.length - 1; // Subtract 1 because the starting position is included
+  const vectorPath = path.map(([x, y]) => ({ x, y }));
 
   return {
     success: true,
-    path,
-    distance_moved: distanceMoved,
+    path: vectorPath,
+    distance_moved: distance,
     message: 'Character moved successfully.',
   };
 }
