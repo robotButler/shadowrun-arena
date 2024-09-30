@@ -17,7 +17,7 @@ import {
   handleSimpleActions,
   handleFireModeChange
 } from '../lib/combatInterface'
-import { calculateMaxPhysicalHealth, calculateMaxStunHealth, isCharacterAlive, isCharacterConscious, calculateDistance } from '../lib/utils'
+import { calculateMaxPhysicalHealth, calculateMaxStunHealth, isCharacterAlive, isCharacterConscious, calculateDistance, getRandomEmptyPosition } from '../lib/utils'
 import {
   ActionType,
   SimpleAction,
@@ -60,7 +60,6 @@ export function CombatTab({
   const [movementDistance, setMovementDistance] = useState(0);
   const [movementDirection, setMovementDirection] = useState<'Toward' | 'Away'>('Toward');
   const [actionLog, setActionLog] = useState<{ summary: string, details: string[] }[]>([]);
-  const [initialDistance, setInitialDistance] = useState(10);
   const [selectedFreeAction, setSelectedFreeAction] = useState<'CallShot' | 'ChangeFireMode' | null>(null);
   const [roundNumber, setRoundNumber] = useState(1);
   const [initialInitiatives, setInitialInitiatives] = useState<Record<string, number>>({});
@@ -68,7 +67,7 @@ export function CombatTab({
   const [meleeRangeError, setMeleeRangeError] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [movementRemaining, setMovementRemaining] = useState(0);
-  const [mapSize, setMapSize] = useState<Vector>({ x: 25, y: 25 });
+  const [mapSize, setMapSize] = useState<Vector>({ x: 50, y: 50 });
   const [partialCoverProb, setPartialCoverProb] = useState(0.1);
   const [hardCoverProb, setHardCoverProb] = useState(0.05);
   const [gameMap, setGameMap] = useState<GameMap | null>(null);
@@ -80,12 +79,22 @@ export function CombatTab({
   const [maxMoveDistance, setMaxMoveDistance] = useState(0);
 
   useEffect(() => {
-    generateNewMap();
-  }, []);
+    if (faction1.length > 0 || faction2.length > 0) {
+      generateNewMap();
+    }
+  }, [faction1, faction2]);
 
   const generateNewMap = () => {
     const newMap = generate_map(mapSize, partialCoverProb, hardCoverProb);
     setGameMap(newMap);
+    
+    // Automatically place characters in random positions
+    const allCharacters = [...faction1, ...faction2].map(id => characters.find(c => c.id === id)).filter(Boolean) as Character[];
+    const newPlacedCharacters = allCharacters.map(character => ({
+      character,
+      position: getRandomEmptyPosition(newMap, allCharacters.length)
+    }));
+    setPlacedCharacters(newPlacedCharacters);
   };
 
   const startNewCombatHandler = () => {
@@ -512,16 +521,6 @@ export function CombatTab({
               onModifierChange={(characterId, value) => {}}
             />
           </div>
-          <div className="mt-4 flex items-center gap-2">
-            <Label htmlFor="initialDistance" className="whitespace-nowrap">Initial Distance (meters):</Label>
-            <Input
-              id="initialDistance"
-              type="number"
-              value={initialDistance}
-              onChange={(e) => setInitialDistance(parseInt(e.target.value))}
-              className="w-20"
-            />
-          </div>
         </CardContent>
         <CardFooter>
           <Button onClick={() => setShowMapGeneration(true)} disabled={faction1.length === 0 || faction2.length === 0 || isCombatActive}>
@@ -887,10 +886,7 @@ export function CombatTab({
                     <h3 className="font-semibold mb-2">Combat Map</h3>
                     <MapDisplay 
                       map={gameMap}
-                      placedCharacters={combatCharacters.map(char => ({
-                        character: char,
-                        position: char.position
-                      }))}
+                      placedCharacters={placedCharacters}
                       onCellClick={handleMapClick}
                       currentCharacter={combatCharacters[currentCharacterIndex]}
                       maxMoveDistance={remainingMovement}

@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
-import { Attribute, Vector, CombatCharacter } from './types'  // Update this import
+import { Attribute, Vector, CombatCharacter, GameMap } from './types'  // Update this import
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -82,4 +82,28 @@ export function calculate_wound_modifier(character: CombatCharacter): number {
   const physicalModifier = Math.floor(character.physical_damage / 3);
   const stunModifier = Math.floor(character.stun_damage / 3);
   return physicalModifier + stunModifier;
+}
+
+export function getRandomEmptyPosition(map: GameMap, numPositions: number): Vector {
+  const emptyPositions: Vector[] = [];
+  
+  for (let y = 0; y < map.height; y++) {
+    for (let x = 0; x < map.width; x++) {
+      if (map.cells[y * map.width + x] === 0) {
+        emptyPositions.push({ x, y });
+      }
+    }
+  }
+
+  if (emptyPositions.length < numPositions) {
+    throw new Error("Not enough empty positions on the map");
+  }
+
+  // Shuffle the array of empty positions
+  for (let i = emptyPositions.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [emptyPositions[i], emptyPositions[j]] = [emptyPositions[j], emptyPositions[i]];
+  }
+
+  return emptyPositions[Math.floor(Math.random() * emptyPositions.length)];
 }

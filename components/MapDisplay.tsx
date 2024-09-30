@@ -20,6 +20,8 @@ export function MapDisplay({
   maxMoveDistance,
   isSelectingMoveTarget
 }: MapDisplayProps) {
+  console.log("Placed Characters:", placedCharacters);  // Add this line
+
   const cellSize = 20; // Size of each cell in pixels
 
   const getCellColor = (cellType: CellType, position: Vector) => {
