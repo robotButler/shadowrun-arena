@@ -132,9 +132,9 @@ describe('Combat Functions', () => {
 
   test('check_combat_end detects end of combat', () => {
     const characters: CombatCharacter[] = [
-      { ...mockCharacter, faction: 'faction1', is_conscious: true, initiative: 0, position: 0, previousPhysicalDamage: 0, previousStunDamage: 0, movement_remaining: 0 },
-      { ...mockCharacter, faction: 'faction1', is_conscious: false, initiative: 0, position: 0, previousPhysicalDamage: 0, previousStunDamage: 0, movement_remaining: 0 },
-      { ...mockCharacter, faction: 'faction2', is_conscious: false, initiative: 0, position: 0, previousPhysicalDamage: 0, previousStunDamage: 0, movement_remaining: 0 }
+      { ...mockCharacter, faction: 'faction1', is_conscious: true, total_initiative: 0, position: 0, previousPhysicalDamage: 0, previousStunDamage: 0, movement_remaining: 0 },
+      { ...mockCharacter, faction: 'faction1', is_conscious: false, total_initiative: 0, position: 0, previousPhysicalDamage: 0, previousStunDamage: 0, movement_remaining: 0 },
+      { ...mockCharacter, faction: 'faction2', is_conscious: false, total_initiative: 0, position: 0, previousPhysicalDamage: 0, previousStunDamage: 0, movement_remaining: 0 }
     ];
     expect(check_combat_end(characters)).toBe(true);
   });

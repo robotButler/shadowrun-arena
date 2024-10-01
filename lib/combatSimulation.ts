@@ -5,6 +5,8 @@ import { roll_initiative, resolve_attack, check_combat_end, select_best_weapon, 
 import { calculateMaxPhysicalHealth, calculateMaxStunHealth, isCharacterAlive, isCharacterConscious, calculatePhysicalLimit, calculateMentalLimit } from './utils';
 import { calculateDistance } from './utils';
 import { ManagedCharacter } from './characterManagement';
+import { getRandomEmptyCell } from './utils';
+import { GameMap } from './map';
 
 const MELEE_RANGE = 2; // Melee range in meters
 
@@ -31,7 +33,7 @@ function calculateSprintingDistance(character: CombatCharacter, sprintHits: numb
 export const createCombatCharacter = (character: Character, faction: 'faction1' | 'faction2', position: number, factionModifiers: Record<string, number>): CombatCharacter => {
   const managedCharacter = new ManagedCharacter(character, faction, { x: position, y: 0 });
   const { initiative_total } = roll_initiative(managedCharacter);
-  managedCharacter.initiative = initiative_total;
+  managedCharacter.original_initiative = initiative_total;
   managedCharacter.current_initiative = initiative_total;
   managedCharacter.situational_modifiers = factionModifiers[character.id] || 0;
   managedCharacter.movement_remaining = calculateRunningDistance(managedCharacter);
@@ -58,7 +60,7 @@ export const simulateRound = (characters: CombatCharacter[]): RoundResult => {
 
   if (characters[0].current_initiative < 1) {
     characters.forEach(char => {
-      char.current_initiative = char.initiative;
+      char.current_initiative = char.total_initiative();
       char.movement_remaining = calculateRunningDistance(char);
     });
     roundResult.messages.push("Initiative reset: All characters' initiatives have been reset to their initial values.");

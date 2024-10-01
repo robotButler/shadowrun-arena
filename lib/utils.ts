@@ -1,7 +1,7 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
 import { Attribute, Vector, CombatCharacter } from './types'  // Update this import
-import { GameMap } from './map'
+import { CellType, GameMap } from './map'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -107,4 +107,18 @@ export function getRandomEmptyPosition(map: GameMap, numPositions: number): Vect
   }
 
   return emptyPositions[Math.floor(Math.random() * emptyPositions.length)];
+}
+
+export function getRandomEmptyCell(map: GameMap): [number, number] {
+  const height = map.height;
+  const width = map.width;
+  
+  while (true) {
+    const x = Math.floor(Math.random() * width);
+    const y = Math.floor(Math.random() * height);
+    
+    if (map.cells[y * map.width + x] === CellType.Empty) {
+      return [x, y];
+    }
+  }
 }

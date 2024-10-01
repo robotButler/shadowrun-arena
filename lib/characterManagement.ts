@@ -134,7 +134,8 @@ export class ManagedCharacter implements CombatCharacter {
   weapons: Weapon[];
   initiativeDice: number;
   faction: 'faction1' | 'faction2';
-  initiative: number;
+  total_initiative: () => number;
+  original_initiative: number;
   current_initiative: number;
   position: Vector;
   cumulative_recoil: number;
@@ -163,7 +164,8 @@ export class ManagedCharacter implements CombatCharacter {
     this.weapons = [...character.weapons];
     this.initiativeDice = character.initiativeDice;
     this.faction = faction;
-    this.initiative = 0; // This will be set by roll_initiative
+    this.total_initiative = function() { return this.original_initiative - this.calculate_wound_modifier() };
+    this.original_initiative = 0;
     this.current_initiative = 0; // This will be set by roll_initiative
     this.position = position;
     this.cumulative_recoil = 0;

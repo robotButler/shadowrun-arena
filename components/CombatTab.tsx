@@ -32,6 +32,7 @@ import { FactionSelector } from './MiscComponents'
 import { ActionLogEntry } from './MiscComponents'
 import { GameMap, generate_map } from '../lib/map'
 import { MapDisplay } from './MapDisplay'
+import { initializeMap } from '../lib/map'
 
 export function CombatTab({
   characters,
@@ -100,16 +101,28 @@ export function CombatTab({
     }
   }, [faction1, faction2, isCombatActive]);
 
+  // Debug: Log placedCharacters whenever it changes
+  useEffect(() => {
+    console.log("placedCharacters updated:", placedCharacters);
+  }, [placedCharacters]);
+
   const generateNewMap = () => {
     const newMap = generate_map(mapSize, partialCoverProb, hardCoverProb);
-    setGameMap(newMap);
+    console.log("New map generated:", newMap);
     
     // Automatically place characters in random positions
     const allCharacters = [...faction1, ...faction2].map(id => characters.find(c => c.id === id)).filter(Boolean) as Character[];
-    const newPlacedCharacters = allCharacters.map(character => ({
-      character,
-      position: getRandomEmptyPosition(newMap, allCharacters.length)
-    }));
+    console.log("All characters to place:", allCharacters);
+
+    const newPlacedCharacters = allCharacters.map(character => {
+      const position = getRandomEmptyPosition(newMap, allCharacters.length);
+      console.log(`Placing ${character.name} at position:`, position);
+      return { character, position };
+    });
+    console.log("New placed characters:", newPlacedCharacters);
+    
+    // Update both map and placed characters in a single state update
+    setGameMap(newMap);
     setPlacedCharacters(newPlacedCharacters);
   };
 
@@ -163,6 +176,11 @@ export function CombatTab({
     setRemainingMovement(updatedCharacters[newCharacterIndex].movement_remaining);
     setIsRunning(false);
     setMaxMoveDistance(getMaxMoveDistance(updatedCharacters[newCharacterIndex]));
+
+    // Check if combat has ended
+    if (newInitiativePhase === 0) {
+      endCombat();
+    }
   };
 
   const setDefaultWeaponAndTarget = () => {
@@ -519,8 +537,8 @@ export function CombatTab({
     setIsCombatActive(false);
     setActionLog([]);
     clearInputs();
-    setPlacedCharacters([]);
     setIsMapAccepted(false);
+    generateNewMap();
   };
 
   return (
@@ -647,7 +665,7 @@ export function CombatTab({
                     placedCharacters={placedCharacters}
                     faction1={faction1}
                     faction2={faction2}
-                    placingCharacter={placingCharacter} // Add this prop
+                    placingCharacter={placingCharacter}
                   />
                 )}
               </div>
@@ -678,10 +696,12 @@ export function CombatTab({
                     const currentChar = combatCharacters[currentCharacterIndex];
                     const maxPhysical = calculateMaxPhysicalHealth(currentChar.attributes.body);
                     const maxStun = calculateMaxStunHealth(currentChar.attributes.willpower);
+                    const woundModifier = Math.floor((currentChar.physical_damage + currentChar.stun_damage) / 3);
                     return (
                       <>
                         <p>Physical Damage: {currentChar.physical_damage} / {maxPhysical}</p>
                         <p>Stun Damage: {currentChar.stun_damage} / {maxStun}</p>
+                        <p>Wound Modifier: -{woundModifier}</p>
                         <p>Status: {currentChar.is_alive ? (currentChar.is_conscious ? 'Conscious' : 'Unconscious') : 'Dead'}</p>
                       </>
                     );
@@ -924,6 +944,7 @@ export function CombatTab({
                     character: char,
                     position: char.position
                   }))}
+                  placingCharacter={placingCharacter}
                   onCellClick={handleMapClick}
                   currentCharacter={combatCharacters[currentCharacterIndex]}
                   maxMoveDistance={remainingMovement}

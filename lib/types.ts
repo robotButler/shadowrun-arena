@@ -57,7 +57,8 @@ export type Vector = {
 // Update the CombatCharacter interface
 export interface CombatCharacter extends Character {
   faction: 'faction1' | 'faction2'
-  initiative: number
+  total_initiative: () => number
+  original_initiative: number
   position: Vector  // Changed from number to Vector
   previousPhysicalDamage: number
   previousStunDamage: number

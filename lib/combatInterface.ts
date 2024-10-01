@@ -61,7 +61,8 @@ export const startNewCombat = (
         return [];
       },
       faction: faction1.includes(id) ? 'faction1' : 'faction2',
-      initiative: 0,
+      total_initiative: function() { return this.original_initiative - calculate_wound_modifier(this) },
+      original_initiative: 0,
       position: placedCharacter.position,
       previousPhysicalDamage: 0,
       previousStunDamage: 0,
@@ -74,19 +75,19 @@ export const startNewCombat = (
 
   combatCharacters.forEach(char => {
     const { initiative_total, initiative_rolls } = roll_initiative(char);
-    char.initiative = initiative_total;
+    char.original_initiative = initiative_total;
     char.current_initiative = initiative_total;
     initialInitiativeRolls[char.id] = initiative_total;
 
     initiativeLog.push(`${char.name}: ${initiative_total} (Dice: ${initiative_rolls.join(', ')})`);
   });
 
-  combatCharacters.sort((a, b) => b.initiative - a.initiative);
+  combatCharacters.sort((a, b) => b.original_initiative - a.original_initiative);
 
   return {
     combatCharacters: combatCharacters,
     initialInitiatives: initialInitiativeRolls,
-    currentInitiativePhase: combatCharacters[0].initiative,
+    currentInitiativePhase: combatCharacters[0].original_initiative,
     currentCharacterIndex: 0,
     actionLog: [{ summary: "Combat Started", details: initiativeLog }]
   };
@@ -102,7 +103,8 @@ export const createCombatCharacter = (
   faction,
   updateStatus: () => {},
   getStatusChanges: () => [],
-  initiative: 0,
+  original_initiative: 0,
+  total_initiative: function() { return this.original_initiative - calculate_wound_modifier(this) },
   position,
   current_initiative: 0,
   movement_remaining: 0,
@@ -150,42 +152,62 @@ export const updateInitiative = (
   newCharacterIndex: number,
   actionLog: { summary: string, details: string[] } | null
 } => {
-  let highestInitiative = -1;
-  let nextCharacterIndex = -1;
+  const updatedCharacters = [...combatCharacters];
+  let currentChar = updatedCharacters[currentCharacterIndex];
+  
+  // Calculate wound modifier
+  const woundModifier = calculate_wound_modifier(currentChar);
+  
+  // Decrease initiative by 10, considering wound modifier
+  currentChar.current_initiative -= (10 + woundModifier);
 
-  const updatedChars = combatCharacters.map((char, index) => {
-    if (index === currentCharacterIndex) {
-      char.current_initiative -= 10;
-    }
-    if (char.current_initiative > highestInitiative && char.is_conscious) {
-      highestInitiative = char.current_initiative;
-      nextCharacterIndex = index;
-    }
-    return char;
-  });
-
-  let actionLog = null;
-
-  if (highestInitiative < 1) {
-    updatedChars.forEach(char => {
-      char.current_initiative = initialInitiatives[char.id];
-      // Reset movement_remaining for all characters at the start of a new turn
-      char.movement_remaining = char.attributes.agility * 2;
-    });
-    highestInitiative = Math.max(...updatedChars.map(char => char.current_initiative));
-    nextCharacterIndex = updatedChars.findIndex(char => char.current_initiative === highestInitiative && char.is_conscious);
+  if (currentChar.current_initiative <= 0) {
+    // Reset initiative to initial value minus wound modifier
+    currentChar.current_initiative = initialInitiatives[currentChar.id] - woundModifier;
     
-    actionLog = { 
-      summary: "New Combat Turn", 
-      details: ["All characters' initiatives have been reset to their initial values.", "Movement has been reset for all characters."]
+    // Reset movement
+    currentChar.movement_remaining = currentChar.attributes.agility * 2;
+  }
+
+  // Find the character with the highest initiative
+  let highestInitiative = -Infinity;
+  let newCharacterIndex = -1;
+
+  for (let i = 0; i < updatedCharacters.length; i++) {
+    const char = updatedCharacters[i];
+    if (char.is_conscious && char.current_initiative > highestInitiative) {
+      highestInitiative = char.current_initiative;
+      newCharacterIndex = i;
+    }
+  }
+
+  // If no conscious character found, end combat
+  if (newCharacterIndex === -1) {
+    return {
+      updatedCharacters,
+      newInitiativePhase: 0,
+      newCharacterIndex: 0,
+      actionLog: {
+        summary: "Combat has ended. No conscious characters remaining.",
+        details: []
+      }
     };
   }
 
+  const newInitiativePhase = updatedCharacters[newCharacterIndex].current_initiative;
+
   return {
-    updatedCharacters: updatedChars,
-    newInitiativePhase: highestInitiative,
-    newCharacterIndex: nextCharacterIndex,
-    actionLog
+    updatedCharacters,
+    newInitiativePhase,
+    newCharacterIndex,
+    actionLog: {
+      summary: `${currentChar.name}'s turn ended. Next up: ${updatedCharacters[newCharacterIndex].name}`,
+      details: [
+        `${currentChar.name}'s initiative decreased to ${currentChar.current_initiative}`,
+        `Wound modifier applied: -${woundModifier}`,
+        `New initiative phase: ${newInitiativePhase}`
+      ]
+    }
   };
 };
 
