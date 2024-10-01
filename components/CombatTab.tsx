@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -32,7 +32,6 @@ import { FactionSelector } from './MiscComponents'
 import { ActionLogEntry } from './MiscComponents'
 import { GameMap, generate_map } from '../lib/map'
 import { MapDisplay } from './MapDisplay'
-import { initializeMap } from '../lib/map'
 
 export function CombatTab({
   characters,
@@ -541,6 +540,18 @@ export function CombatTab({
     generateNewMap();
   };
 
+  const initiativeOrder = useMemo(() => {
+    const order: { char: CombatCharacter, phase: number }[] = [];
+    combatCharacters.forEach(char => {
+      let remainingInitiative = char.total_initiative();
+      while (remainingInitiative > 0) {
+        order.push({ char, phase: remainingInitiative });
+        remainingInitiative -= 10;
+      }
+    });
+    return order.sort((a, b) => b.phase - a.phase);
+  }, [combatCharacters]);
+
   return (
     <>
       <Card>
@@ -682,7 +693,27 @@ export function CombatTab({
         <Card className="mt-4">
           <CardHeader>
             <CardTitle>Combat Simulation</CardTitle>
-            <CardDescription>Initiative Phase: {currentInitiativePhase}</CardDescription>
+            <CardDescription>
+              <h4 className="font-semibold mb-2">Initiative Phases</h4>
+              <div className="grid grid-cols-[auto,auto,auto,1fr] gap-x-1 gap-y-1 text-sm">
+                {initiativeOrder.map(({ char, phase }, index) => {
+                  const isCurrentPhase = phase === currentInitiativePhase;
+                  const isActiveCharacter = isCurrentPhase && char === combatCharacters[currentCharacterIndex];
+                  const hasWoundModifier = char.original_initiative !== char.total_initiative();
+                  const woundModifier = char.original_initiative - char.current_initiative;
+                  return (
+                    <React.Fragment key={`${char.id}-${phase}`}>
+                      <div className="w-4 text-center">{isActiveCharacter ? "➤" : ""}</div>
+                      <div className={`${isActiveCharacter ? "font-bold" : ""} truncate`}>{char.name}</div>
+                      <div className="text-right whitespace-nowrap px-1">
+                        {hasWoundModifier && `${char.original_initiative} - ${woundModifier} wound =`}
+                      </div>
+                      <div className="w-8 text-right">{phase}</div>
+                    </React.Fragment>
+                  );
+                })}
+              </div>
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
