@@ -17,7 +17,7 @@ import {
   handleSimpleActions,
   handleFireModeChange
 } from '../lib/combatInterface'
-import { calculateMaxPhysicalHealth, calculateMaxStunHealth, isCharacterAlive, isCharacterConscious, calculateDistance, getRandomEmptyPosition } from '../lib/utils'
+import { calculateMaxPhysicalHealth, calculateMaxStunHealth, isCharacterAlive, isCharacterConscious, calculateDistance, getRandomEmptyPosition, roundVector } from '../lib/utils'
 import {
   ActionType,
   SimpleAction,
@@ -104,6 +104,17 @@ export function CombatTab({
   useEffect(() => {
     console.log("placedCharacters updated:", placedCharacters);
   }, [placedCharacters]);
+
+  // Update this useEffect to keep placedCharacters in sync with combatCharacters
+  useEffect(() => {
+    if (combatCharacters.length > 0) {
+      const updatedPlacedCharacters = combatCharacters.map(combatChar => ({
+        character: combatChar,
+        position: roundVector(combatChar.position)
+      }));
+      setPlacedCharacters(updatedPlacedCharacters);
+    }
+  }, [combatCharacters]);
 
   const generateNewMap = () => {
     const newMap = generate_map(mapSize, partialCoverProb, hardCoverProb);
@@ -495,19 +506,20 @@ export function CombatTab({
     if (!isSelectingMoveTarget) return;
 
     const currentChar = combatCharacters[currentCharacterIndex];
-    const moveDistance = Math.floor(calculateDistance(currentChar.position, position));
+    const roundedPosition = roundVector(position);
+    const moveDistance = Math.floor(calculateDistance(currentChar.position, roundedPosition));
 
     if (moveDistance > remainingMovement) {
       toast.error("Selected position is too far away.");
       return;
     }
 
-    if (gameMap?.cells?.[position.y * (gameMap?.width ?? 0) + position.x] !== 0) {
+    if (gameMap?.cells?.[roundedPosition.y * (gameMap?.width ?? 0) + roundedPosition.x] !== 0) {
       toast.error("Cannot move to an occupied or obstacle cell.");
       return;
     }
 
-    if (combatCharacters.some(char => char.position.x === position.x && char.position.y === position.y)) {
+    if (combatCharacters.some(char => char.position.x === roundedPosition.x && char.position.y === roundedPosition.y)) {
       toast.error("Cannot move to a cell occupied by another character.");
       return;
     }
@@ -516,7 +528,7 @@ export function CombatTab({
       const updatedChars = [...prevChars];
       updatedChars[currentCharacterIndex] = {
         ...updatedChars[currentCharacterIndex],
-        position: position,
+        position: roundedPosition,
         movement_remaining: updatedChars[currentCharacterIndex].movement_remaining - moveDistance
       };
       return updatedChars;
@@ -526,8 +538,18 @@ export function CombatTab({
     setRemainingMovement(prev => prev - moveDistance);
     setActionLog(prev => [...prev, { 
       summary: `${currentChar.name} moved ${moveDistance} meters.`, 
-      details: [`New position: (${position.x}, ${position.y})`, `Remaining movement: ${remainingMovement - moveDistance} meters`] 
+      details: [`New position: (${roundedPosition.x}, ${roundedPosition.y})`, `Remaining movement: ${remainingMovement - moveDistance} meters`] 
     }]);
+
+    // Update placedCharacters immediately after moving
+    setPlacedCharacters(prevPlaced => {
+      const updatedPlaced = [...prevPlaced];
+      const index = updatedPlaced.findIndex(pc => pc.character.id === currentChar.id);
+      if (index !== -1) {
+        updatedPlaced[index] = { ...updatedPlaced[index], position: roundedPosition };
+      }
+      return updatedPlaced;
+    });
   };
 
   const handleNewCombatClick = () => {
@@ -971,10 +993,7 @@ export function CombatTab({
                 <h3 className="font-semibold mb-2">Combat Map</h3>
                 <MapDisplay 
                   map={gameMap}
-                  placedCharacters={combatCharacters.map(char => ({
-                    character: char,
-                    position: char.position
-                  }))}
+                  placedCharacters={placedCharacters} // This should now always be up-to-date
                   placingCharacter={placingCharacter}
                   onCellClick={handleMapClick}
                   currentCharacter={combatCharacters[currentCharacterIndex]}

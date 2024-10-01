@@ -3,6 +3,7 @@ import { GameMap, CellType } from '../lib/map';
 import { Character, Vector, CombatCharacter } from '../lib/types';
 import { Bed, BrickWall, Ghost } from 'lucide-react';
 import * as PF from 'pathfinding';
+import { roundVector } from '../lib/utils'; // Add this import
 
 interface MapDisplayProps {
   map: GameMap;
@@ -46,7 +47,12 @@ export function MapDisplay({
     
     // Mark cells with characters as unwalkable
     placedCharacters.forEach(({ position }) => {
-      grid.setWalkableAt(position.x, position.y, false);
+      const { x, y } = roundVector(position);
+      if (x >= 0 && x < map.width && y >= 0 && y < map.height) {
+        grid.setWalkableAt(x, y, false);
+      } else {
+        console.warn(`Invalid character position: (${x}, ${y})`);
+      }
     });
 
     return { pfGrid: grid, finder: new PF.AStarFinder() };
@@ -57,18 +63,13 @@ export function MapDisplay({
     if (currentCharacter && isSelectingMoveTarget && maxMoveDistance !== undefined) {
       const newValidMoveTargets: Vector[] = [];
       const tempGrid = pfGrid.clone();
-      tempGrid.setWalkableAt(currentCharacter.position.x, currentCharacter.position.y, true);
+      const { x: currentX, y: currentY } = roundVector(currentCharacter.position);
+      tempGrid.setWalkableAt(currentX, currentY, true);
 
       for (let y = 0; y < map.height; y++) {
         for (let x = 0; x < map.width; x++) {
           if (map.cells[y * map.width + x] === CellType.Empty) {
-            const path = finder.findPath(
-              currentCharacter.position.x,
-              currentCharacter.position.y,
-              x,
-              y,
-              tempGrid.clone()
-            );
+            const path = finder.findPath(currentX, currentY, x, y, tempGrid.clone());
             if (path.length > 0 && path.length - 1 <= maxMoveDistance) {
               newValidMoveTargets.push({ x, y });
             }
@@ -84,11 +85,12 @@ export function MapDisplay({
   useEffect(() => {
     if (currentCharacter && isSelectingMoveTarget && hoveredCell) {
       const tempGrid = pfGrid.clone();
-      tempGrid.setWalkableAt(currentCharacter.position.x, currentCharacter.position.y, true);
+      const { x: currentX, y: currentY } = roundVector(currentCharacter.position);
+      tempGrid.setWalkableAt(currentX, currentY, true);
 
       const path = finder.findPath(
-        currentCharacter.position.x,
-        currentCharacter.position.y,
+        currentX,
+        currentY,
         hoveredCell.x,
         hoveredCell.y,
         tempGrid

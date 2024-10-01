@@ -122,3 +122,10 @@ export function getRandomEmptyCell(map: GameMap): [number, number] {
     }
   }
 }
+
+export function roundVector(vector: Vector): Vector {
+  return {
+    x: Math.round(vector.x),
+    y: Math.round(vector.y)
+  };
+}

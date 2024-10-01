@@ -298,19 +298,21 @@ export const handleComplexAction = (
     const sprintRoll = Array(runningSkill + agilityDice).fill(0).map(() => Math.floor(Math.random() * 6) + 1);
     const hits = sprintRoll.filter(roll => roll >= 5).length;
     const extraDistance = ['Dwarf', 'Troll'].includes(currentChar.metatype) ? hits : hits * 2;
+    const additionalMovement = extraDistance;
+    
+    actionLog = {
+      summary: `${currentChar.name} sprinted.`,
+      details: [
+        `Running Test: ${agilityDice} Agi + ${runningSkill} Run = ${sprintRoll.length} dice, ${hits} hits`,
+        `Additional movement: ${additionalMovement} meters`
+      ]
+    };
 
-    const target = combatCharacters.find(c => c.faction !== currentChar.faction && c.is_conscious);
-    if (target) {
-      const direction: Vector = {
-        x: target.position.x - currentChar.position.x,
-        y: target.position.y - currentChar.position.y
-      };
-      const length = Math.sqrt(direction.x * direction.x + direction.y * direction.y);
-      const unitVector: Vector = { x: direction.x / length, y: direction.y / length };
-      
-      updatedChars[currentCharacterIndex].position = updatePosition(currentChar.position, unitVector, remainingMovement + extraDistance);
-    }
-    actionLog = { summary: `${currentChar.name} sprinted an extra ${extraDistance} meters!`, details: [] };
+    // Update the character's remaining movement
+    updatedChars[currentCharacterIndex] = {
+      ...currentChar,
+      movement_remaining: (currentChar.movement_remaining || 0) + additionalMovement
+    };
   } else if ((selectedComplexAction === 'FireWeapon' || selectedComplexAction === 'MeleeAttack') && selectedWeapon && selectedTargetId) {
     const target = combatCharacters.find(c => c.id === selectedTargetId);
     if (target) {
