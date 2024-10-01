@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { GameMap, CellType } from '../lib/map';
 import { Character, Vector, CombatCharacter } from '../lib/types';
-import { Bed, BrickWall } from 'lucide-react';
+import { Bed, BrickWall, Ghost } from 'lucide-react';
 import * as PF from 'pathfinding';
 
 interface MapDisplayProps {
@@ -13,6 +13,7 @@ interface MapDisplayProps {
   isSelectingMoveTarget?: boolean;
   faction1: string[];
   faction2: string[];
+  placingCharacter: Character | null; // Add this prop
 }
 
 export function MapDisplay({ 
@@ -23,7 +24,8 @@ export function MapDisplay({
   maxMoveDistance,
   isSelectingMoveTarget,
   faction1 = [],
-  faction2 = []
+  faction2 = [],
+  placingCharacter // Add this prop
 }: MapDisplayProps) {
   const [hoveredCell, setHoveredCell] = useState<Vector | null>(null);
   const [currentPath, setCurrentPath] = useState<Vector[]>([]);
@@ -91,7 +93,7 @@ export function MapDisplay({
         hoveredCell.y,
         tempGrid
       );
-      setCurrentPath(path.map(([x, y]: [number, number]) => ({ x, y })));
+      setCurrentPath(path.map(([x, y]) => ({ x, y })));
     } else {
       setCurrentPath([]);
     }
@@ -130,6 +132,11 @@ export function MapDisplay({
       }
     }
 
+    // If we're placing a character and hovering over an empty cell, show a preview
+    if (placingCharacter && hoveredCell && hoveredCell.x === position.x && hoveredCell.y === position.y && cellType === CellType.Empty) {
+      return 'rgba(255, 165, 0, 0.3)'; // Light orange for character placement preview
+    }
+
     return baseColor;
   };
 
@@ -149,6 +156,7 @@ export function MapDisplay({
         const y = Math.floor(index / map.width);
         const position = { x, y };
         const characterInitial = getCharacterInitial(position);
+        const isHovered = hoveredCell && hoveredCell.x === x && hoveredCell.y === y;
 
         return (
           <g 
@@ -190,6 +198,15 @@ export function MapDisplay({
               >
                 {characterInitial}
               </text>
+            )}
+            
+            {/* Add this block for character placement preview */}
+            {placingCharacter && isHovered && cell === CellType.Empty && (
+              <foreignObject x={x * cellSize} y={y * cellSize} width={cellSize} height={cellSize}>
+                <div className="w-full h-full flex items-center justify-center">
+                  <Ghost className="w-4 h-4 text-orange-500" />
+                </div>
+              </foreignObject>
             )}
           </g>
         );

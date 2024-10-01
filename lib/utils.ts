@@ -1,6 +1,7 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
-import { Attribute, Vector, CombatCharacter, GameMap } from './types'  // Update this import
+import { Attribute, Vector, CombatCharacter } from './types'  // Update this import
+import { GameMap } from './map'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))

@@ -407,22 +407,6 @@ export const handleSimpleActions = (
     }
   });
 
-  // Handle remaining movement after actions
-  if (remainingMovement > 0) {
-    const target = updatedChars.find(c => c.faction !== currentChar.faction && c.is_conscious);
-    if (target) {
-      const { updatedCharacters, actionLog: movementLog } = handleMovement(
-        updatedChars,
-        currentCharacterIndex,
-        remainingMovement,
-        currentChar.position.x < target.position.x ? 'Toward' : 'Away',
-        isRunning
-      );
-      updatedChars = updatedCharacters;
-      actionLog.push(movementLog);
-    }
-  }
-
   return { updatedCharacters: updatedChars, actionLog, combatEnded };
 };
 

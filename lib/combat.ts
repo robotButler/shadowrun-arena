@@ -91,8 +91,8 @@ function resolve_attack(attacker: CombatCharacter, defender: CombatCharacter, we
         const base_pool = attacker.attributes.agility + (attacker.skills['close combat'] || 0);
         const reach_modifier = (weapon?.reach ?? 0) - 0;
         const wound_modifier = calculate_wound_modifier(attacker);
-        const total_attack_pool = Math.max(base_pool + reach_modifier + wound_modifier + attacker.situational_modifiers, 1);
-        result.messages.push(`Melee Attack: Base pool (${base_pool}) + Reach modifier (${reach_modifier}) + Wound modifier (${wound_modifier}) + Situational modifiers (${attacker.situational_modifiers}) = Total attack pool (${total_attack_pool})`);
+        const total_attack_pool = Math.max(base_pool + reach_modifier - wound_modifier + attacker.situational_modifiers, 1);
+        result.messages.push(`Melee Attack: Base pool (${base_pool}) + Reach modifier (${reach_modifier}) - Wound modifier (${wound_modifier}) + Situational modifiers (${attacker.situational_modifiers}) = Total attack pool (${total_attack_pool})`);
 
         const attack_rolls = roll_d6(total_attack_pool);
         const { hits: attack_hits, ones: attack_ones, isGlitch, isCriticalGlitch } = count_hits_and_ones(attack_rolls);
@@ -125,8 +125,8 @@ function resolve_attack(attacker: CombatCharacter, defender: CombatCharacter, we
         // Defender's defense test
         const base_defense_pool = defender.attributes.reaction + defender.attributes.intuition;
         const defender_wound_modifier = calculate_wound_modifier(defender);
-        const total_defense_pool = Math.max(base_defense_pool - reach_modifier + defender_wound_modifier + defender.situational_modifiers, 1);
-        result.messages.push(`Defense: Base pool (${base_defense_pool}) - Reach modifier (${reach_modifier}) + Wound modifier (${defender_wound_modifier}) + Situational modifiers (${defender.situational_modifiers}) = Total defense pool (${total_defense_pool})`);
+        const total_defense_pool = Math.max(base_defense_pool - reach_modifier - defender_wound_modifier + defender.situational_modifiers, 1);
+        result.messages.push(`Defense: Base pool (${base_defense_pool}) - Reach modifier (${reach_modifier}) - Wound modifier (${defender_wound_modifier}) + Situational modifiers (${defender.situational_modifiers}) = Total defense pool (${total_defense_pool})`);
 
         const defense_rolls = roll_d6(total_defense_pool);
         const { hits: defense_hits } = count_hits_and_ones(defense_rolls);
@@ -154,9 +154,9 @@ function resolve_attack(attacker: CombatCharacter, defender: CombatCharacter, we
         // Damage resistance test
         let resistance_pool = defender.attributes.body + Math.max(modified_armor, 0);
         const defender_wound_modifier_resistance = calculate_wound_modifier(defender);
-        resistance_pool += defender_wound_modifier_resistance + defender.situational_modifiers;
+        resistance_pool += defender.situational_modifiers;
         resistance_pool = Math.max(resistance_pool, 1);
-        result.messages.push(`Damage resistance pool: Body (${defender.attributes.body}) + Modified armor (${Math.max(modified_armor, 0)}) + Wound modifier (${defender_wound_modifier_resistance}) + Situational modifiers (${defender.situational_modifiers}) = ${resistance_pool}`);
+        result.messages.push(`Damage resistance pool: Body (${defender.attributes.body}) + Modified armor (${Math.max(modified_armor, 0)}) + Situational modifiers (${defender.situational_modifiers}) = ${resistance_pool}`);
 
         const resistance_rolls = roll_d6(resistance_pool);
         const { hits: resistance_hits } = count_hits_and_ones(resistance_rolls);
@@ -194,9 +194,9 @@ function resolve_attack(attacker: CombatCharacter, defender: CombatCharacter, we
         const range_modifier = get_range_modifier(weapon.type, distance);
         const recoil_modifier = calculate_recoil(attacker, weapon, fire_mode);
         const wound_modifier = calculate_wound_modifier(attacker);
-        const modifiers = range_modifier + recoil_modifier + wound_modifier + attacker.situational_modifiers;
+        const modifiers = range_modifier + recoil_modifier - wound_modifier + attacker.situational_modifiers;
         const total_attack_pool = Math.max(base_pool + modifiers, 1);
-        result.messages.push(`Ranged Attack: Base pool (${base_pool}) + Range modifier (${range_modifier}) + Recoil modifier (${recoil_modifier}) + Wound modifier (${wound_modifier}) + Situational modifiers (${attacker.situational_modifiers}) = Total attack pool (${total_attack_pool})`);
+        result.messages.push(`Ranged Attack: Base pool (${base_pool}) + Range modifier (${range_modifier}) + Recoil modifier (${recoil_modifier}) - Wound modifier (${wound_modifier}) + Situational modifiers (${attacker.situational_modifiers}) = Total attack pool (${total_attack_pool})`);
 
         const attack_rolls = roll_d6(total_attack_pool);
         const { hits: attack_hits, ones: attack_ones, isGlitch, isCriticalGlitch } = count_hits_and_ones(attack_rolls);
@@ -265,9 +265,10 @@ function resolve_attack(attacker: CombatCharacter, defender: CombatCharacter, we
         // Damage resistance test
         let resistance_pool = defender.attributes.body + Math.max(modified_armor, 0);
         const defender_wound_modifier_resistance = calculate_wound_modifier(defender);
-        resistance_pool += defender_wound_modifier_resistance + defender.situational_modifiers;
+        resistance_pool -= defender_wound_modifier_resistance;
+        resistance_pool += defender.situational_modifiers;
         resistance_pool = Math.max(resistance_pool, 1);
-        result.messages.push(`Damage resistance pool: Body (${defender.attributes.body}) + Modified armor (${Math.max(modified_armor, 0)}) + Wound modifier (${defender_wound_modifier_resistance}) + Situational modifiers (${defender.situational_modifiers}) = ${resistance_pool}`);
+        result.messages.push(`Damage resistance pool: Body (${defender.attributes.body}) + Modified armor (${Math.max(modified_armor, 0)}) - Wound modifier (${defender_wound_modifier_resistance}) + Situational modifiers (${defender.situational_modifiers}) = ${resistance_pool}`);
 
         const resistance_rolls = roll_d6(resistance_pool);
         const { hits: resistance_hits } = count_hits_and_ones(resistance_rolls);

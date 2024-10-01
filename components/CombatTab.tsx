@@ -69,8 +69,8 @@ export function CombatTab({
   const [meleeRangeError, setMeleeRangeError] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [movementRemaining, setMovementRemaining] = useState(0);
-  const [mapSize, setMapSize] = useState<Vector>({ x: 50, y: 50 });
-  const [partialCoverProb, setPartialCoverProb] = useState(0.1);
+  const [mapSize, setMapSize] = useState<Vector>({ x: 35, y: 35 });
+  const [partialCoverProb, setPartialCoverProb] = useState(0.05);
   const [hardCoverProb, setHardCoverProb] = useState(0.05);
   const [gameMap, setGameMap] = useState<GameMap | null>(null);
   const [isMapAccepted, setIsMapAccepted] = useState(false);
@@ -79,6 +79,7 @@ export function CombatTab({
   const [placedCharacters, setPlacedCharacters] = useState<Array<{character: Character, position: Vector}>>([]);
   const [isSelectingMoveTarget, setIsSelectingMoveTarget] = useState(false);
   const [maxMoveDistance, setMaxMoveDistance] = useState(0);
+  const [combatEnded, setCombatEnded] = useState(false);
 
   console.log("CombatTab props:", { 
     characters, 
@@ -131,6 +132,7 @@ export function CombatTab({
     clearInputs();
     setRoundNumber(1);
     setIsCombatActive(true);
+    setCombatEnded(false);
     
     // Set initial remaining movement for all characters
     const initialCombatCharacters = result.combatCharacters.map(char => ({
@@ -145,6 +147,7 @@ export function CombatTab({
 
   const endCombat = () => {
     setIsCombatActive(false);
+    setCombatEnded(true);
     toast.info("Combat has ended!");
   };
 
@@ -510,6 +513,16 @@ export function CombatTab({
     }]);
   };
 
+  const handleNewCombatClick = () => {
+    setShowMapGeneration(true);
+    setCombatEnded(false);
+    setIsCombatActive(false);
+    setActionLog([]);
+    clearInputs();
+    setPlacedCharacters([]);
+    setIsMapAccepted(false);
+  };
+
   return (
     <>
       <Card>
@@ -540,7 +553,10 @@ export function CombatTab({
           </div>
         </CardContent>
         <CardFooter>
-          <Button onClick={() => setShowMapGeneration(true)} disabled={faction1.length === 0 || faction2.length === 0 || isCombatActive}>
+          <Button 
+            onClick={handleNewCombatClick} 
+            disabled={faction1.length === 0 || faction2.length === 0 || isCombatActive}
+          >
             <Swords className="mr-2 h-4 w-4" /> New Combat
           </Button>
         </CardFooter>
@@ -631,6 +647,7 @@ export function CombatTab({
                     placedCharacters={placedCharacters}
                     faction1={faction1}
                     faction2={faction2}
+                    placingCharacter={placingCharacter} // Add this prop
                   />
                 )}
               </div>
@@ -643,7 +660,7 @@ export function CombatTab({
         </Card>
       )}
       
-      {isMapAccepted && isCombatActive && combatCharacters.length > 0 && gameMap && (
+      {isMapAccepted && (isCombatActive || combatEnded) && combatCharacters.length > 0 && gameMap && (
         <Card className="mt-4">
           <CardHeader>
             <CardTitle>Combat Simulation</CardTitle>

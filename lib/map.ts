@@ -60,20 +60,39 @@ export function generate_map(
   partial_cover_prob: number,
   hard_cover_prob: number
 ): GameMap {
-  const cells: number[] = [];
+  const cells: CellType[] = [];
 
+  // First pass: generate initial map
   for (let y = 0; y < size.y; y++) {
     for (let x = 0; x < size.x; x++) {
       const rand = Math.random();
-      let cellType = 0; // Open
+      let cellType = CellType.Empty;
 
       if (rand < hard_cover_prob) {
-        cellType = 2; // Hard Cover
+        cellType = CellType.HardCover;
       } else if (rand < hard_cover_prob + partial_cover_prob) {
-        cellType = 1; // Partial Cover
+        cellType = CellType.PartialCover;
       }
 
       cells.push(cellType);
+    }
+  }
+
+  // Second pass: adjust probabilities for adjacent cells
+  const adjustmentFactor = 0.05; // Increase probability by 15%
+  for (let y = 0; y < size.y; y++) {
+    for (let x = 0; x < size.x; x++) {
+      if (cells[y * size.x + x] === CellType.Empty) {
+        const adjacentCover = hasAdjacentCover(x, y, size, cells);
+        if (adjacentCover) {
+          const rand = Math.random();
+          if (rand < (hard_cover_prob + adjustmentFactor)) {
+            cells[y * size.x + x] = CellType.HardCover;
+          } else if (rand < (hard_cover_prob + partial_cover_prob + adjustmentFactor)) {
+            cells[y * size.x + x] = CellType.PartialCover;
+          }
+        }
+      }
     }
   }
 
@@ -82,6 +101,27 @@ export function generate_map(
     height: size.y,
     cells,
   };
+}
+
+function hasAdjacentCover(x: number, y: number, size: Vector, cells: CellType[]): boolean {
+  const directions = [
+    [-1, -1], [0, -1], [1, -1],
+    [-1,  0],          [1,  0],
+    [-1,  1], [0,  1], [1,  1]
+  ];
+
+  for (const [dx, dy] of directions) {
+    const nx = x + dx;
+    const ny = y + dy;
+    if (nx >= 0 && nx < size.x && ny >= 0 && ny < size.y) {
+      const cell = cells[ny * size.x + nx];
+      if (cell === CellType.PartialCover || cell === CellType.HardCover) {
+        return true;
+      }
+    }
+  }
+
+  return false;
 }
 
 // Function to move a character
