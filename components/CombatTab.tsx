@@ -715,51 +715,68 @@ export function CombatTab({
         <Card className="mt-4">
           <CardHeader>
             <CardTitle>Combat Simulation</CardTitle>
-            <CardDescription>
-              <h4 className="font-semibold mb-2">Initiative Phases</h4>
-              <div className="grid grid-cols-[auto,auto,auto,1fr] gap-x-1 gap-y-1 text-sm">
-                {initiativeOrder.map(({ char, phase }, index) => {
-                  const isCurrentPhase = phase === currentInitiativePhase;
-                  const isActiveCharacter = isCurrentPhase && char === combatCharacters[currentCharacterIndex];
-                  const hasWoundModifier = char.original_initiative !== char.total_initiative();
-                  const woundModifier = char.original_initiative - char.current_initiative;
-                  return (
-                    <React.Fragment key={`${char.id}-${phase}`}>
-                      <div className="w-4 text-center">{isActiveCharacter ? "➤" : ""}</div>
-                      <div className={`${isActiveCharacter ? "font-bold" : ""} truncate`}>{char.name}</div>
-                      <div className="text-right whitespace-nowrap px-1">
-                        {hasWoundModifier && `${char.original_initiative} - ${woundModifier} wound =`}
-                      </div>
-                      <div className="w-8 text-right">{phase}</div>
-                    </React.Fragment>
-                  );
-                })}
-              </div>
-            </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-4">
-                <div>
-                  <h3 className="font-semibold">Current Character: {combatCharacters[currentCharacterIndex].name}</h3>
-                  <p>Faction: {combatCharacters[currentCharacterIndex].faction}</p>
-                  <p>Position: {combatCharacters[currentCharacterIndex].position.x}, {combatCharacters[currentCharacterIndex].position.y}</p>
-                  <p>Current Initiative: {combatCharacters[currentCharacterIndex].current_initiative}</p>
-                  {(() => {
-                    const currentChar = combatCharacters[currentCharacterIndex];
-                    const maxPhysical = calculateMaxPhysicalHealth(currentChar.attributes.body);
-                    const maxStun = calculateMaxStunHealth(currentChar.attributes.willpower);
-                    const woundModifier = Math.floor((currentChar.physical_damage + currentChar.stun_damage) / 3);
-                    return (
-                      <>
-                        <p>Physical Damage: {currentChar.physical_damage} / {maxPhysical}</p>
-                        <p>Stun Damage: {currentChar.stun_damage} / {maxStun}</p>
-                        <p>Wound Modifier: -{woundModifier}</p>
-                        <p>Status: {currentChar.is_alive ? (currentChar.is_conscious ? 'Conscious' : 'Unconscious') : 'Dead'}</p>
-                      </>
-                    );
-                  })()}
+                <div className="grid grid-cols-2 gap-4">
+                  <Card className="col-span-1">
+                    <CardHeader>
+                      <CardTitle>Initiative Phases</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-[auto,auto,auto,1fr] gap-x-1 gap-y-1 text-sm">
+                        {initiativeOrder.map(({ char, phase }, index) => {
+                          const isCurrentPhase = phase === currentInitiativePhase;
+                          const isActiveCharacter = isCurrentPhase && char === combatCharacters[currentCharacterIndex];
+                          const hasWoundModifier = char.original_initiative !== char.total_initiative();
+                          const woundModifier = char.original_initiative - char.current_initiative;
+                          const textColor = isActiveCharacter 
+                            ? (char.faction === 'faction1' ? 'text-blue-600' : 'text-red-600')
+                            : 'text-black';
+                          return (
+                            <React.Fragment key={`${char.id}-${phase}`}>
+                              <div className="w-4 text-center text-black">{isActiveCharacter ? "➤" : ""}</div>
+                              <div className={`${isActiveCharacter ? "font-bold" : ""} truncate ${textColor}`}>{char.name}</div>
+                              <div className="text-right whitespace-nowrap px-1 text-black">
+                                {hasWoundModifier && `${char.original_initiative} - ${woundModifier} wound =`}
+                              </div>
+                              <div className="w-8 text-right text-black">{phase}</div>
+                            </React.Fragment>
+                          );
+                        })}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="col-span-1">
+                    <CardHeader>
+                      <CardTitle>{combatCharacters[currentCharacterIndex].name}</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-2 gap-2 text-sm">
+                        <div>Faction: {combatCharacters[currentCharacterIndex].faction}</div>
+                        <div>Initiative: {combatCharacters[currentCharacterIndex].current_initiative}</div>
+                        <div>Position: {combatCharacters[currentCharacterIndex].position.x}, {combatCharacters[currentCharacterIndex].position.y}</div>
+                        {(() => {
+                          const currentChar = combatCharacters[currentCharacterIndex];
+                          const maxPhysical = calculateMaxPhysicalHealth(currentChar.attributes.body);
+                          const maxStun = calculateMaxStunHealth(currentChar.attributes.willpower);
+                          const woundModifier = Math.floor((currentChar.physical_damage + currentChar.stun_damage) / 3);
+                          return (
+                            <>
+                              <div>Physical: {currentChar.physical_damage} / {maxPhysical}</div>
+                              <div>Stun: {currentChar.stun_damage} / {maxStun}</div>
+                              <div>Wound Modifier: -{woundModifier}</div>
+                              <div>Status: {currentChar.is_alive ? (currentChar.is_conscious ? 'Conscious' : 'Unconscious') : 'Dead'}</div>
+                            </>
+                          );
+                        })()}
+                      </div>
+                    </CardContent>
+                  </Card>
                 </div>
+
                 <div>
                   <h4 className="font-semibold">Action Type</h4>
                   <div className="flex space-x-2">
@@ -993,7 +1010,7 @@ export function CombatTab({
                 <h3 className="font-semibold mb-2">Combat Map</h3>
                 <MapDisplay 
                   map={gameMap}
-                  placedCharacters={placedCharacters} // This should now always be up-to-date
+                  placedCharacters={placedCharacters}
                   placingCharacter={placingCharacter}
                   onCellClick={handleMapClick}
                   currentCharacter={combatCharacters[currentCharacterIndex]}
