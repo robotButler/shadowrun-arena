@@ -205,7 +205,12 @@ export function CombatTab({
   };
 
   const handleActionTypeSelection = (actionType: ActionType) => {
-    setSelectedActionType(actionType === selectedActionType ? null : actionType);
+    setSelectedActionType(prev => {
+      if (prev === actionType) {
+        return null;
+      }
+      return actionType;
+    });
     setSelectedSimpleActions([]);
     setSelectedComplexAction(null);
     if (actionType) {
@@ -219,61 +224,104 @@ export function CombatTab({
   const handleSimpleActionSelection = (action: SimpleAction, index: number) => {
     setSelectedSimpleActions(prev => {
       const newActions = [...prev];
-      newActions[index] = action;
+      if (newActions[index] === action) {
+        newActions[index] = null;
+      } else {
+        newActions[index] = action;
+      }
+
+      // Move this logic inside the setSelectedSimpleActions callback
+      setSelectedActionType(prevActionType => {
+        const anySimpleActionSelected = newActions.some(a => a !== null);
+        if (anySimpleActionSelected) {
+          return 'Simple';
+        } else if (prevActionType === 'Simple') {
+          return null;
+        }
+        return prevActionType;
+      });
+
       return newActions;
     });
 
-    const currentChar = combatCharacters[currentCharacterIndex];
-    let defaultWeapon = null;
-    let defaultTarget = null;
+    setSelectedComplexAction(null);
 
-    if (action === 'FireRangedWeapon') {
-      defaultWeapon = currentChar.weapons.find(w => w.type === 'Ranged') || null;
-      defaultTarget = combatCharacters.find(c => c.faction !== currentChar.faction && c.is_conscious)?.id || null;
-    } else if (action === 'ReloadWeapon' || action === 'ChangeFireMode') {
-      defaultWeapon = currentChar.weapons.find(w => w.type === 'Ranged') || null;
+    if (selectedSimpleActions[index] === action) {
+      // Deselecting, so clear weapon and target
+      setSelectedWeapons(prev => {
+        const newWeapons = [...prev];
+        newWeapons[index] = null;
+        return newWeapons;
+      });
+      setSelectedTargets(prev => {
+        const newTargets = [...prev];
+        newTargets[index] = null;
+        return newTargets;
+      });
+    } else {
+      // Selecting, so set default weapon and target
+      const currentChar = combatCharacters[currentCharacterIndex];
+      let defaultWeapon = null;
+      let defaultTarget = null;
+
+      if (action === 'FireRangedWeapon') {
+        defaultWeapon = currentChar.weapons.find(w => w.type === 'Ranged') || null;
+        defaultTarget = combatCharacters.find(c => c.faction !== currentChar.faction && c.is_conscious)?.id || null;
+      } else if (action === 'ReloadWeapon' || action === 'ChangeFireMode') {
+        defaultWeapon = currentChar.weapons.find(w => w.type === 'Ranged') || null;
+      }
+
+      setSelectedWeapons(prev => {
+        const newWeapons = [...prev];
+        newWeapons[index] = defaultWeapon;
+        return newWeapons;
+      });
+      setSelectedTargets(prev => {
+        const newTargets = [...prev];
+        newTargets[index] = defaultTarget;
+        return newTargets;
+      });
     }
-
-    setSelectedWeapons(prev => {
-      const newWeapons = [...prev];
-      newWeapons[index] = defaultWeapon;
-      return newWeapons;
-    });
-    setSelectedTargets(prev => {
-      const newTargets = [...prev];
-      newTargets[index] = defaultTarget;
-      return newTargets;
-    });
   };
 
   const handleComplexActionSelection = (action: ComplexAction) => {
-    setSelectedComplexAction(action);
+    setSelectedActionType(prev => prev === 'Complex' && selectedComplexAction === action ? null : 'Complex');
+    setSelectedComplexAction(prev => prev === action ? null : action);
+    setSelectedSimpleActions([]);
     setMeleeRangeError(null);
-    const currentChar = combatCharacters[currentCharacterIndex];
-    let defaultWeapon = null;
-    let defaultTarget = null;
 
-    if (action === 'FireWeapon' || action === 'MeleeAttack') {
-      defaultWeapon = currentChar.weapons.find(w => w.type === (action === 'FireWeapon' ? 'Ranged' : 'Melee')) || null;
-      
-      if (action === 'MeleeAttack') {
-        const meleeTargets = combatCharacters.filter(c => 
-          c.faction !== currentChar.faction && 
-          c.is_conscious &&
-          calculateDistance(currentChar.position, c.position) <= 2
-        );
-        defaultTarget = meleeTargets.length > 0 ? meleeTargets[0].id : null;
+    if (selectedComplexAction === action) {
+      // Deselecting, so clear weapon and target
+      setSelectedWeapons([null]);
+      setSelectedTargets([null]);
+    } else {
+      // Selecting, so set default weapon and target
+      const currentChar = combatCharacters[currentCharacterIndex];
+      let defaultWeapon = null;
+      let defaultTarget = null;
+
+      if (action === 'FireWeapon' || action === 'MeleeAttack') {
+        defaultWeapon = currentChar.weapons.find(w => w.type === (action === 'FireWeapon' ? 'Ranged' : 'Melee')) || null;
         
-        if (!defaultTarget) {
-          setMeleeRangeError("No opponents within melee range.");
+        if (action === 'MeleeAttack') {
+          const meleeTargets = combatCharacters.filter(c => 
+            c.faction !== currentChar.faction && 
+            c.is_conscious &&
+            calculateDistance(currentChar.position, c.position) <= 2
+          );
+          defaultTarget = meleeTargets.length > 0 ? meleeTargets[0].id : null;
+          
+          if (!defaultTarget) {
+            setMeleeRangeError("No opponents within melee range.");
+          }
+        } else {
+          defaultTarget = combatCharacters.find(c => c.faction !== currentChar.faction && c.is_conscious)?.id || null;
         }
-      } else {
-        defaultTarget = combatCharacters.find(c => c.faction !== currentChar.faction && c.is_conscious)?.id || null;
       }
-    }
 
-    setSelectedWeapons([defaultWeapon]);
-    setSelectedTargets([defaultTarget]);
+      setSelectedWeapons([defaultWeapon]);
+      setSelectedTargets([defaultTarget]);
+    }
   };
 
   const handleWeaponSelection = (weapon: Weapon, index: number) => {
@@ -777,197 +825,195 @@ export function CombatTab({
                   </Card>
                 </div>
 
-                <div>
-                  <h4 className="font-semibold">Action Type</h4>
-                  <div className="flex space-x-2">
-                    <Button
-                      variant={selectedActionType === 'Simple' ? 'default' : 'outline'}
-                      onClick={() => handleActionTypeSelection('Simple')}
-                    >
-                      Simple Actions (2)
-                    </Button>
-                    <Button
-                      variant={selectedActionType === 'Complex' ? 'default' : 'outline'}
-                      onClick={() => handleActionTypeSelection('Complex')}
-                    >
-                      Complex Action (1)
-                    </Button>
-                  </div>
-                </div>
-                {selectedActionType === 'Simple' && (
-                  <div>
-                    <h5 className="font-semibold">Simple Actions</h5>
-                    {[0, 1].map((index) => (
-                      <div key={index} className="space-y-2">
-                        <Select 
-                          value={selectedSimpleActions[index] || ''} 
-                          onValueChange={(value) => handleSimpleActionSelection(value as SimpleAction, index)}
-                        >
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Free Action</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex space-x-2">
+                      <Button
+                        variant={selectedFreeAction === 'CallShot' ? 'default' : 'outline'}
+                        onClick={() => handleFreeActionSelection('CallShot')}
+                      >
+                        Call Shot
+                      </Button>
+                      <Button
+                        variant={selectedFreeAction === 'ChangeFireMode' ? 'default' : 'outline'}
+                        onClick={() => handleFreeActionSelection('ChangeFireMode')}
+                      >
+                        Change Fire Mode
+                      </Button>
+                      <Button
+                        variant={isRunning ? 'default' : 'outline'}
+                        onClick={handleRunAction}
+                        disabled={isRunning}
+                      >
+                        <Play className="mr-2 h-4 w-4" /> Run
+                      </Button>
+                    </div>
+                    {selectedFreeAction === 'ChangeFireMode' && (
+                      <div className="mt-2">
+                        <Select onValueChange={(value) => {
+                          const [weaponIndex, newFireMode] = value.split('|')
+                          handleFireModeChangeHandler(parseInt(weaponIndex), newFireMode as FireMode)
+                        }}>
                           <SelectTrigger>
-                            <SelectValue placeholder={`Select Simple Action ${index + 1}`} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="CallShot">Call Shot</SelectItem>
-                            <SelectItem value="ChangeFireMode">Change Fire Mode</SelectItem>
-                            <SelectItem value="FireRangedWeapon">Fire Ranged Weapon</SelectItem>
-                            <SelectItem value="ReloadWeapon">Reload Weapon</SelectItem>
-                            <SelectItem value="TakeAim">Take Aim</SelectItem>
-                            <SelectItem value="TakeCover">Take Cover</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        {(selectedSimpleActions[index] === 'FireRangedWeapon' || 
-                          selectedSimpleActions[index] === 'ReloadWeapon' || 
-                          selectedSimpleActions[index] === 'ChangeFireMode') && (
-                          <Select 
-                            value={selectedWeapons[index] ? JSON.stringify(selectedWeapons[index]) : ''}
-                            onValueChange={(value) => handleWeaponSelection(JSON.parse(value), index)}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select Weapon" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {combatCharacters[currentCharacterIndex].weapons
-                                .filter(w => w.type === 'Ranged')
-                                .map((weapon, i) => (
-                                  <SelectItem key={i} value={JSON.stringify(weapon)}>{weapon.name}</SelectItem>
-                                ))
-                              }
-                            </SelectContent>
-                          </Select>
-                        )}
-                        {selectedSimpleActions[index] === 'FireRangedWeapon' && (
-                          <Select 
-                            value={selectedTargets[index] || ''}
-                            onValueChange={(value) => handleTargetSelection(value, index)}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select Target" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {combatCharacters
-                                .filter(c => c.faction !== combatCharacters[currentCharacterIndex].faction && c.is_conscious)
-                                .map((target) => (
-                                  <SelectItem key={target.id} value={target.id}>{target.name}</SelectItem>
-                                ))
-                              }
-                            </SelectContent>
-                          </Select>
-                        )}
-                        {selectedSimpleActions[index] === 'ChangeFireMode' && selectedWeapons[index] && (
-                          <Select
-                            value={selectedWeapons[index]?.currentFireMode || ''}
-                            onValueChange={(value) => handleFireModeChangeHandler(combatCharacters[currentCharacterIndex].weapons.findIndex(w => w.name === selectedWeapons[index]?.name), value as FireMode)}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select Fire Mode" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {selectedWeapons[index]?.fireModes?.map((mode) => (
-                                <SelectItem key={mode} value={mode}>{mode}</SelectItem>
-                              )) ?? []}
-                            </SelectContent>
-                          </Select>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {selectedActionType === 'Complex' && (
-                  <div>
-                    <h5 className="font-semibold">Complex Action</h5>
-                    <Select onValueChange={(value) => handleComplexActionSelection(value as ComplexAction)}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select Complex Action" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="FireWeapon">Fire Weapon</SelectItem>
-                        <SelectItem value="MeleeAttack">Melee Attack</SelectItem>
-                        <SelectItem value="Sprint">Sprint</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    {(selectedComplexAction === 'FireWeapon' || selectedComplexAction === 'MeleeAttack') && (
-                      <>
-                        <Select onValueChange={(value) => handleWeaponSelection(JSON.parse(value), 0)}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select Weapon" />
+                            <SelectValue placeholder="Select Weapon and New Fire Mode" />
                           </SelectTrigger>
                           <SelectContent>
                             {combatCharacters[currentCharacterIndex].weapons
-                              .filter(w => selectedComplexAction === 'FireWeapon' ? w.type === 'Ranged' : w.type === 'Melee')
-                              .map((weapon, i) => (
-                                <SelectItem key={i} value={JSON.stringify(weapon)}>{weapon.name}</SelectItem>
-                              ))
+                              .filter(w => w.type === 'Ranged')
+                              .map((weapon, weaponIndex) => 
+                                weapon.fireModes?.map(mode => (
+                                  <SelectItem key={`${weaponIndex}-${mode}`} value={`${weaponIndex}|${mode}`}>
+                                    {weapon.name} - {mode}
+                                  </SelectItem>
+                                ))
+                              )
                             }
                           </SelectContent>
                         </Select>
-                        <Select onValueChange={(value) => handleTargetSelection(value, 0)}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select Target" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {combatCharacters
-                              .filter(c => c.faction !== combatCharacters[currentCharacterIndex].faction && c.is_conscious)
-                              .map((target) => (
-                                <SelectItem key={target.id} value={target.id}>{target.name}</SelectItem>
-                              ))
-                            }
-                          </SelectContent>
-                        </Select>
-                      </>
+                      </div>
                     )}
-                  </div>
-                )}
-                <div>
-                  <h5 className="font-semibold">Free Action</h5>
-                  <div className="flex space-x-2">
-                    <Button
-                      variant={selectedFreeAction === 'CallShot' ? 'default' : 'outline'}
-                      onClick={() => handleFreeActionSelection('CallShot')}
-                    >
-                      Call Shot
-                    </Button>
-                    <Button
-                      variant={selectedFreeAction === 'ChangeFireMode' ? 'default' : 'outline'}
-                      onClick={() => handleFreeActionSelection('ChangeFireMode')}
-                    >
-                      Change Fire Mode
-                    </Button>
-                    <Button
-                      variant={isRunning ? 'default' : 'outline'}
-                      onClick={handleRunAction}
-                      disabled={isRunning}
-                    >
-                      <Play className="mr-2 h-4 w-4" /> Run
-                    </Button>
-                  </div>
-                  {selectedFreeAction === 'ChangeFireMode' && (
-                    <div className="mt-2">
-                      <Select onValueChange={(value) => {
-                        const [weaponIndex, newFireMode] = value.split('|')
-                        handleFireModeChangeHandler(parseInt(weaponIndex), newFireMode as FireMode)
-                      }}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select Weapon and New Fire Mode" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {combatCharacters[currentCharacterIndex].weapons
-                            .filter(w => w.type === 'Ranged')
-                            .map((weapon, weaponIndex) => 
-                              weapon.fireModes?.map(mode => (
-                                <SelectItem key={`${weaponIndex}-${mode}`} value={`${weaponIndex}|${mode}`}>
-                                  {weapon.name} - {mode}
-                                </SelectItem>
-                              ))
-                            )
-                          }
-                        </SelectContent>
-                      </Select>
+                    {isRunning && (
+                      <p className="mt-2">Character is running. Movement distance doubled for this turn.</p>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Simple Actions (2)</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-2 gap-4">
+                      {[0, 1].map((index) => (
+                        <Card key={index}>
+                          <CardHeader>
+                            <CardTitle>Simple Action {index + 1}</CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            <div className="grid grid-cols-2 gap-2">
+                              {['CallShot', 'ChangeFireMode', 'FireRangedWeapon', 'ReloadWeapon', 'TakeAim', 'TakeCover'].map((action) => (
+                                <Button
+                                  key={action}
+                                  variant={selectedSimpleActions[index] === action ? 'default' : 'outline'}
+                                  onClick={() => handleSimpleActionSelection(action as SimpleAction, index)}
+                                  className="w-full"
+                                  disabled={selectedActionType === 'Complex'}
+                                >
+                                  {action}
+                                </Button>
+                              ))}
+                            </div>
+                            {/* Weapon and target selection for simple actions */}
+                            {(selectedSimpleActions[index] === 'FireRangedWeapon' || 
+                              selectedSimpleActions[index] === 'ReloadWeapon' || 
+                              selectedSimpleActions[index] === 'ChangeFireMode') && (
+                              <Select 
+                                value={selectedWeapons[index] ? JSON.stringify(selectedWeapons[index]) : ''}
+                                onValueChange={(value) => handleWeaponSelection(JSON.parse(value), index)}
+                              >
+                                <SelectTrigger className="mt-2">
+                                  <SelectValue placeholder="Select Weapon" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {combatCharacters[currentCharacterIndex].weapons
+                                    .filter(w => w.type === 'Ranged')
+                                    .map((weapon, i) => (
+                                      <SelectItem key={i} value={JSON.stringify(weapon)}>{weapon.name}</SelectItem>
+                                    ))
+                                  }
+                                </SelectContent>
+                              </Select>
+                            )}
+                            {selectedSimpleActions[index] === 'FireRangedWeapon' && (
+                              <Select 
+                                value={selectedTargets[index] || ''}
+                                onValueChange={(value) => handleTargetSelection(value, index)}
+                              >
+                                <SelectTrigger className="mt-2">
+                                  <SelectValue placeholder="Select Target" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {combatCharacters
+                                    .filter(c => c.faction !== combatCharacters[currentCharacterIndex].faction && c.is_conscious)
+                                    .map((target) => (
+                                      <SelectItem key={target.id} value={target.id}>{target.name}</SelectItem>
+                                    ))
+                                  }
+                                </SelectContent>
+                              </Select>
+                            )}
+                          </CardContent>
+                        </Card>
+                      ))}
                     </div>
-                  )}
-                  {isRunning && (
-                    <p className="mt-2">Character is running. Movement distance doubled for this turn.</p>
-                  )}
-                </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Complex Action (1)</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-3 gap-2">
+                      {['FireWeapon', 'MeleeAttack', 'Sprint'].map((action) => (
+                        <Button
+                          key={action}
+                          variant={selectedComplexAction === action ? 'default' : 'outline'}
+                          onClick={() => handleComplexActionSelection(action as ComplexAction)}
+                          className="w-full"
+                          disabled={selectedActionType === 'Simple' || selectedSimpleActions.some(a => a !== null)}
+                        >
+                          {action}
+                        </Button>
+                      ))}
+                    </div>
+                    {selectedComplexAction && (
+                      <div className="mt-4">
+                        {/* Weapon and target selection for complex actions */}
+                        {(selectedComplexAction === 'FireWeapon' || selectedComplexAction === 'MeleeAttack') && (
+                          <>
+                            <Select 
+                              value={selectedWeapons[0] ? JSON.stringify(selectedWeapons[0]) : ''}
+                              onValueChange={(value) => handleWeaponSelection(JSON.parse(value), 0)}
+                            >
+                              <SelectTrigger className="mt-2">
+                                <SelectValue placeholder="Select Weapon" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {combatCharacters[currentCharacterIndex].weapons
+                                  .filter(w => selectedComplexAction === 'FireWeapon' ? w.type === 'Ranged' : w.type === 'Melee')
+                                  .map((weapon, i) => (
+                                    <SelectItem key={i} value={JSON.stringify(weapon)}>{weapon.name}</SelectItem>
+                                  ))
+                                }
+                              </SelectContent>
+                            </Select>
+                            <Select 
+                              value={selectedTargets[0] || ''}
+                              onValueChange={(value) => handleTargetSelection(value, 0)}
+                            >
+                              <SelectTrigger className="mt-2">
+                                <SelectValue placeholder="Select Target" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {combatCharacters
+                                  .filter(c => c.faction !== combatCharacters[currentCharacterIndex].faction && c.is_conscious)
+                                  .map((target) => (
+                                    <SelectItem key={target.id} value={target.id}>{target.name}</SelectItem>
+                                  ))
+                                }
+                              </SelectContent>
+                            </Select>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
                 <div>
                   <h5 className="font-semibold">Movement</h5>
                   <p>Max Move Distance: {maxMoveDistance} meters</p>
