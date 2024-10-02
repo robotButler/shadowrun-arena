@@ -15,7 +15,7 @@ import {
   handleMovement,
   handleComplexAction,
   handleSimpleActions,
-  handleFireModeChange
+  handleFireModeChange,
 } from '../lib/combatInterface'
 import { calculateMaxPhysicalHealth, calculateMaxStunHealth, isCharacterAlive, isCharacterConscious, calculateDistance, getRandomEmptyPosition, roundVector } from '../lib/utils'
 import {
@@ -32,6 +32,8 @@ import { FactionSelector } from './MiscComponents'
 import { ActionLogEntry } from './MiscComponents'
 import { GameMap, generate_map } from '../lib/map'
 import { MapDisplay } from './MapDisplay'
+import * as Tooltip from '@radix-ui/react-tooltip';
+import { rollSprinting, getSprintingDistance } from '@/lib/combatSimulation'
 
 export function CombatTab({
   characters,
@@ -80,6 +82,13 @@ export function CombatTab({
   const [isSelectingMoveTarget, setIsSelectingMoveTarget] = useState(false);
   const [maxMoveDistance, setMaxMoveDistance] = useState(0);
   const [combatEnded, setCombatEnded] = useState(false);
+  const [hasMovedWhileRunning, setHasMovedWhileRunning] = useState(false);
+  const [currentInitiativeOrder, setCurrentInitiativeOrder] = useState<{ char: CombatCharacter, phase: number }[]>([]);
+  const [deadCharacters, setDeadCharacters] = useState<string[]>([]);
+  const [unconsciousCharacters, setUnconsciousCharacters] = useState<string[]>([]);
+  const [sprintBonus, setSprintBonus] = useState<number | null>(null);
+  const [isSprinting, setIsSprinting] = useState(false);
+  const [mostRecentLog, setMostRecentLog] = useState<{ summary: string, details: string[] } | null>(null);
 
   console.log("CombatTab props:", { 
     characters, 
@@ -115,6 +124,54 @@ export function CombatTab({
       setPlacedCharacters(updatedPlacedCharacters);
     }
   }, [combatCharacters]);
+
+  useEffect(() => {
+    if (combatCharacters.length > 0) {
+      setCurrentInitiativeOrder(calculateInitiativeOrder(combatCharacters));
+    }
+  }, [combatCharacters]);
+
+  useEffect(() => {
+    if (isSelectingMoveTarget) {
+      const handleClickOutside = (event: MouseEvent) => {
+        // Check if the click is outside the map
+        if (!(event.target as Element).closest('.combat-map')) {
+          setIsSelectingMoveTarget(false);
+          toast.info("Move target selection cancelled.");
+        }
+      };
+
+      document.addEventListener('mousedown', handleClickOutside);
+
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [isSelectingMoveTarget]);
+
+  useEffect(() => {
+    const newDeadCharacters = combatCharacters
+      .filter(char => !char.is_alive)
+      .map(char => char.id);
+    const newUnconsciousCharacters = combatCharacters
+      .filter(char => char.is_alive && !char.is_conscious)
+      .map(char => char.id);
+
+    setDeadCharacters(newDeadCharacters);
+    setUnconsciousCharacters(newUnconsciousCharacters);
+  }, [combatCharacters]);
+
+  const calculateInitiativeOrder = (characters: CombatCharacter[]) => {
+    const order: { char: CombatCharacter, phase: number }[] = [];
+    characters.forEach(char => {
+      let remainingInitiative = char.total_initiative();
+      while (remainingInitiative > 0) {
+        order.push({ char, phase: remainingInitiative });
+        remainingInitiative -= 10;
+      }
+    });
+    return order.sort((a, b) => b.phase - a.phase);
+  };
 
   const generateNewMap = () => {
     const newMap = generate_map(mapSize, partialCoverProb, hardCoverProb);
@@ -175,22 +232,31 @@ export function CombatTab({
   };
 
   const nextCharacter = () => {
-    const { updatedCharacters, newInitiativePhase, newCharacterIndex, actionLog } = updateInitiative(combatCharacters, currentCharacterIndex, initialInitiatives);
-    setCombatCharacters(updatedCharacters);
-    setCurrentInitiativePhase(newInitiativePhase);
-    setCurrentCharacterIndex(newCharacterIndex);
-    if (actionLog) {
-      setActionLog(prev => [...prev, actionLog]);
+    const newInitiativeOrder = currentInitiativeOrder.slice(1);
+    
+    if (newInitiativeOrder.length === 0) {
+      // Start a new round
+      setRoundNumber(prev => prev + 1);
+      const updatedCharacters = combatCharacters.map(char => ({
+        ...char,
+        movement_remaining: char.attributes.agility * 2
+      }));
+      setCombatCharacters(updatedCharacters);
+      const newOrder = calculateInitiativeOrder(updatedCharacters);
+      setCurrentInitiativeOrder(newOrder);
+      setCurrentCharacterIndex(combatCharacters.findIndex(char => char.id === newOrder[0].char.id));
+    } else {
+      setCurrentInitiativeOrder(newInitiativeOrder);
+      setCurrentCharacterIndex(combatCharacters.findIndex(char => char.id === newInitiativeOrder[0].char.id));
     }
-    // Update remaining movement for the new character
-    setRemainingMovement(updatedCharacters[newCharacterIndex].movement_remaining);
-    setIsRunning(false);
-    setMaxMoveDistance(getMaxMoveDistance(updatedCharacters[newCharacterIndex]));
 
-    // Check if combat has ended
-    if (newInitiativePhase === 0) {
-      endCombat();
-    }
+    const nextCharIndex = currentCharacterIndex;
+    setRemainingMovement(combatCharacters[nextCharIndex].movement_remaining);
+    setIsRunning(false);
+    setMaxMoveDistance(getMaxMoveDistance(combatCharacters[nextCharIndex]));
+    setHasMovedWhileRunning(false);
+    setIsSprinting(false);
+    setSprintBonus(null);
   };
 
   const setDefaultWeaponAndTarget = () => {
@@ -203,6 +269,10 @@ export function CombatTab({
       setSelectedTargets([defaultTarget, null]);
     }
   };
+
+  const currentCharacter = combatCharacters[currentCharacterIndex];
+  const hasMeleeWeapon = currentCharacter?.weapons.some(w => w.type === 'Melee');
+  const hasRangedWeapon = currentCharacter?.weapons.some(w => w.type === 'Ranged');
 
   const handleActionTypeSelection = (actionType: ActionType) => {
     setSelectedActionType(prev => {
@@ -222,6 +292,10 @@ export function CombatTab({
   };
 
   const handleSimpleActionSelection = (action: SimpleAction, index: number) => {
+    if (!hasRangedWeapon && ['CallShot', 'ChangeFireMode', 'FireRangedWeapon', 'ReloadWeapon', 'TakeAim'].includes(action)) {
+      return; // Do nothing if the character doesn't have a ranged weapon
+    }
+
     setSelectedSimpleActions(prev => {
       const newActions = [...prev];
       if (newActions[index] === action) {
@@ -285,6 +359,15 @@ export function CombatTab({
   };
 
   const handleComplexActionSelection = (action: ComplexAction) => {
+    if (action === 'MeleeAttack' && !hasMeleeWeapon) {
+      return; // Do nothing if the character doesn't have a melee weapon
+    }
+
+    if (action === 'Sprint') {
+      handleSprintAction();
+      return;
+    }
+
     setSelectedActionType(prev => prev === 'Complex' && selectedComplexAction === action ? null : 'Complex');
     setSelectedComplexAction(prev => prev === action ? null : action);
     setSelectedSimpleActions([]);
@@ -327,7 +410,7 @@ export function CombatTab({
   const handleWeaponSelection = (weapon: Weapon, index: number) => {
     setSelectedWeapons(prev => {
       const newWeapons = [...prev];
-      newWeapons[index] = weapon;
+      newWeapons[index] = newWeapons[index] === weapon ? null : weapon;
       return newWeapons;
     });
   };
@@ -335,7 +418,7 @@ export function CombatTab({
   const handleTargetSelection = (targetId: string, index: number) => {
     setSelectedTargets(prev => {
       const newTargets = [...prev];
-      newTargets[index] = targetId;
+      newTargets[index] = newTargets[index] === targetId ? null : targetId;
       return newTargets;
     });
 
@@ -364,7 +447,7 @@ export function CombatTab({
       isRunning
     );
     setCombatCharacters(updatedCharacters);
-    setActionLog(prev => [...prev, actionLog]);
+    updateActionLog(actionLog);
     setMovementRemaining(remainingDistance);
     setIsRunning(false);
     setMovementDistance(0);
@@ -385,7 +468,11 @@ export function CombatTab({
       remainingMovement
     );
     setCombatCharacters(updatedCharacters);
-    setActionLog(prev => [...prev, actionLog]);
+    updateActionLog(actionLog);
+    
+    // Recalculate initiative order after action
+    setCurrentInitiativeOrder(calculateInitiativeOrder(updatedCharacters));
+    
     if (combatEnded) {
       endCombat();
       return;
@@ -405,7 +492,11 @@ export function CombatTab({
       remainingMovement
     );
     setCombatCharacters(updatedCharacters);
-    setActionLog(prev => [...prev, ...actionLog]);
+    actionLog.forEach(entry => updateActionLog(entry));
+    
+    // Recalculate initiative order after actions
+    setCurrentInitiativeOrder(calculateInitiativeOrder(updatedCharacters));
+    
     if (combatEnded) {
       endCombat();
       return;
@@ -422,7 +513,7 @@ export function CombatTab({
   const handleFireModeChangeHandler = (weaponIndex: number, newFireMode: FireMode) => {
     const { updatedCharacters, actionLog } = handleFireModeChange(combatCharacters, currentCharacterIndex, weaponIndex, newFireMode);
     setCombatCharacters(updatedCharacters);
-    setActionLog(prev => [...prev, actionLog]);
+    updateActionLog(actionLog);
   };
 
   const clearInputs = () => {
@@ -437,29 +528,55 @@ export function CombatTab({
   };
 
   const handleRunAction = () => {
-    if (isRunning) {
-      toast.error("Already running.");
-      return;
+    if (isSprinting) {
+      return; // Do nothing if sprinting
     }
-    setIsRunning(true);
-    const currentChar = combatCharacters[currentCharacterIndex];
-    const baseMaxDistance = currentChar.attributes.agility * 2;
-    const newMaxDistance = baseMaxDistance * 2;
-    const newRemainingMovement = newMaxDistance - (baseMaxDistance - currentChar.movement_remaining);
+
+    if (hasMovedWhileRunning) {
+      return; // Can't deselect after moving
+    }
     
-    const updatedChars = [...combatCharacters];
-    updatedChars[currentCharacterIndex] = {
-      ...currentChar,
-      movement_remaining: newRemainingMovement
-    };
-    setCombatCharacters(updatedChars);
+    setIsRunning(prev => !prev);
     
-    setRemainingMovement(newRemainingMovement);
-    setMaxMoveDistance(newMaxDistance);
-    setActionLog(prev => [...prev, { 
-      summary: `${currentChar.name} started running.`, 
-      details: [`New max move distance: ${newMaxDistance} meters`, `Remaining movement: ${newRemainingMovement} meters`] 
-    }]);
+    if (!isRunning) {
+      const currentChar = combatCharacters[currentCharacterIndex];
+      const baseMaxDistance = currentChar.attributes.agility * 2;
+      const newMaxDistance = baseMaxDistance * 2;
+      const newRemainingMovement = newMaxDistance - (baseMaxDistance - currentChar.movement_remaining);
+      
+      const updatedChars = [...combatCharacters];
+      updatedChars[currentCharacterIndex] = {
+        ...currentChar,
+        movement_remaining: newRemainingMovement
+      };
+      setCombatCharacters(updatedChars);
+      
+      setRemainingMovement(newRemainingMovement);
+      setMaxMoveDistance(newMaxDistance);
+      updateActionLog({ 
+        summary: `${currentChar.name} started running.`, 
+        details: [`New max move distance: ${newMaxDistance} meters`, `Remaining movement: ${newRemainingMovement} meters`] 
+      });
+    } else {
+      // Revert the changes if deselecting Run
+      const currentChar = combatCharacters[currentCharacterIndex];
+      const baseMaxDistance = currentChar.attributes.agility * 2;
+      const newRemainingMovement = Math.min(baseMaxDistance, currentChar.movement_remaining);
+      
+      const updatedChars = [...combatCharacters];
+      updatedChars[currentCharacterIndex] = {
+        ...currentChar,
+        movement_remaining: newRemainingMovement
+      };
+      setCombatCharacters(updatedChars);
+      
+      setRemainingMovement(newRemainingMovement);
+      setMaxMoveDistance(baseMaxDistance);
+      updateActionLog({ 
+        summary: `${currentChar.name} stopped running.`, 
+        details: [`Max move distance reverted to: ${baseMaxDistance} meters`, `Remaining movement: ${newRemainingMovement} meters`] 
+      });
+    }
   };
 
   const getAvailableMovementDistances = () => {
@@ -584,10 +701,10 @@ export function CombatTab({
 
     setIsSelectingMoveTarget(false);
     setRemainingMovement(prev => prev - moveDistance);
-    setActionLog(prev => [...prev, { 
+    updateActionLog({ 
       summary: `${currentChar.name} moved ${moveDistance} meters.`, 
       details: [`New position: (${roundedPosition.x}, ${roundedPosition.y})`, `Remaining movement: ${remainingMovement - moveDistance} meters`] 
-    }]);
+    });
 
     // Update placedCharacters immediately after moving
     setPlacedCharacters(prevPlaced => {
@@ -598,6 +715,11 @@ export function CombatTab({
       }
       return updatedPlaced;
     });
+
+    // Set hasMovedWhileRunning to true if the character is running
+    if (isRunning) {
+      setHasMovedWhileRunning(true);
+    }
   };
 
   const handleNewCombatClick = () => {
@@ -610,17 +732,57 @@ export function CombatTab({
     generateNewMap();
   };
 
-  const initiativeOrder = useMemo(() => {
-    const order: { char: CombatCharacter, phase: number }[] = [];
-    combatCharacters.forEach(char => {
-      let remainingInitiative = char.total_initiative();
-      while (remainingInitiative > 0) {
-        order.push({ char, phase: remainingInitiative });
-        remainingInitiative -= 10;
-      }
-    });
-    return order.sort((a, b) => b.phase - a.phase);
-  }, [combatCharacters]);
+  const handleSprintAction = () => {
+    if (isSprinting) {
+      // If already sprinting, cancel it
+      setIsSprinting(false);
+      setSprintBonus(null);
+      setRemainingMovement(prev => prev - (sprintBonus || 0));
+      setMaxMoveDistance(prev => prev - (sprintBonus || 0));
+      setIsRunning(false); // Also cancel running
+      updateActionLog({ 
+        summary: `${combatCharacters[currentCharacterIndex].name} stopped sprinting.`, 
+        details: [`Sprint bonus removed: -${sprintBonus} meters`] 
+      });
+    } else {
+      // Roll for sprint
+      const currentChar = combatCharacters[currentCharacterIndex];
+      const sprintDistance = getSprintingDistance(currentChar);
+      const sprintRoll = rollSprinting(currentChar);
+      setSprintBonus(sprintDistance);
+      setIsSprinting(true);
+      setIsRunning(true); // Automatically set running to true
+      setRemainingMovement(prev => prev + sprintDistance);
+      setMaxMoveDistance(prev => prev + sprintDistance);
+      updateActionLog({ 
+        summary: `${currentChar.name} started sprinting.`, 
+        details: [`Sprint roll: ${sprintRoll}`, `Movement increased by ${sprintDistance} meters`] 
+      });
+    }
+  };
+
+  // Add this function to determine if the Perform Action button should be disabled
+  const isPerformActionDisabled = () => {
+    const currentChar = combatCharacters[currentCharacterIndex];
+    if (!currentChar?.is_alive || !currentChar?.is_conscious) {
+      return "Current character is incapacitated and cannot act.";
+    }
+    if (!selectedActionType && !selectedFreeAction && movementDistance === 0) {
+      return "Please select an action type, enter a movement distance, or choose a free action.";
+    }
+    return null; // Not disabled
+  };
+
+  const updateActionLog = (newLog: { summary: string, details?: string[] }) => {
+    const logWithDetails = {
+      ...newLog,
+      details: newLog.details || []
+    };
+    setActionLog(prev => [...prev, logWithDetails]);
+    setMostRecentLog(logWithDetails);
+  };
+
+  const initiativeOrder = currentInitiativeOrder;
 
   return (
     <>
@@ -743,6 +905,8 @@ export function CombatTab({
                   <MapDisplay 
                     map={gameMap} 
                     onCellClick={handleMapCellClick}
+                    deadCharacters={[]} // Add this line
+                    unconsciousCharacters={[]} // Add this line
                     placedCharacters={placedCharacters}
                     faction1={faction1}
                     faction2={faction2}
@@ -775,8 +939,7 @@ export function CombatTab({
                     <CardContent>
                       <div className="grid grid-cols-[auto,auto,auto,1fr] gap-x-1 gap-y-1 text-sm">
                         {initiativeOrder.map(({ char, phase }, index) => {
-                          const isCurrentPhase = phase === currentInitiativePhase;
-                          const isActiveCharacter = isCurrentPhase && char === combatCharacters[currentCharacterIndex];
+                          const isActiveCharacter = char.id === combatCharacters[currentCharacterIndex].id && index === 0;
                           const hasWoundModifier = char.original_initiative !== char.total_initiative();
                           const woundModifier = char.original_initiative - char.current_initiative;
                           const textColor = isActiveCharacter 
@@ -827,6 +990,29 @@ export function CombatTab({
 
                 <Card>
                   <CardHeader>
+                    <CardTitle>Movement</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      <p>Remaining: {remainingMovement} / {maxMoveDistance} meters {sprintBonus && `(+${sprintBonus} sprint)`}</p>
+                      <div className="flex space-x-2">
+                        <Button 
+                          onClick={handleMoveButtonClick}
+                          disabled={isSelectingMoveTarget || remainingMovement <= 0}
+                          className="bg-yellow-500 hover:bg-yellow-600 text-white"
+                        >
+                          {isSelectingMoveTarget ? 'Selecting Move Target...' : 'Select Move Target'}
+                        </Button>
+                      </div>
+                      {isSelectingMoveTarget && (
+                        <p className="mt-2">Click on the map to select your move target.</p>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
                     <CardTitle>Free Action</CardTitle>
                   </CardHeader>
                   <CardContent>
@@ -834,45 +1020,53 @@ export function CombatTab({
                       <Button
                         variant={selectedFreeAction === 'CallShot' ? 'default' : 'outline'}
                         onClick={() => handleFreeActionSelection('CallShot')}
+                        disabled={!hasRangedWeapon}
                       >
                         Call Shot
                       </Button>
                       <Button
                         variant={selectedFreeAction === 'ChangeFireMode' ? 'default' : 'outline'}
                         onClick={() => handleFreeActionSelection('ChangeFireMode')}
+                        disabled={!hasRangedWeapon}
                       >
                         Change Fire Mode
                       </Button>
                       <Button
                         variant={isRunning ? 'default' : 'outline'}
                         onClick={handleRunAction}
-                        disabled={isRunning}
+                        disabled={isSprinting} // Disable when sprinting
                       >
                         <Play className="mr-2 h-4 w-4" /> Run
                       </Button>
                     </div>
                     {selectedFreeAction === 'ChangeFireMode' && (
-                      <div className="mt-2">
-                        <Select onValueChange={(value) => {
-                          const [weaponIndex, newFireMode] = value.split('|')
-                          handleFireModeChangeHandler(parseInt(weaponIndex), newFireMode as FireMode)
-                        }}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select Weapon and New Fire Mode" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {combatCharacters[currentCharacterIndex].weapons
-                              .filter(w => w.type === 'Ranged')
-                              .map((weapon, weaponIndex) => 
-                                weapon.fireModes?.map(mode => (
-                                  <SelectItem key={`${weaponIndex}-${mode}`} value={`${weaponIndex}|${mode}`}>
-                                    {weapon.name} - {mode}
-                                  </SelectItem>
-                                ))
-                              )
-                            }
-                          </SelectContent>
-                        </Select>
+                      <div className="mt-2 space-y-2">
+                        <div className="grid grid-cols-2 gap-2">
+                          {combatCharacters[currentCharacterIndex].weapons
+                            .filter(w => w.type === 'Ranged')
+                            .map((weapon, weaponIndex) => (
+                              <div key={weaponIndex} className="space-y-1">
+                                <p className="text-sm font-semibold">{weapon.name}</p>
+                                <div className="grid grid-cols-2 gap-1">
+                                  {weapon.fireModes?.map(mode => (
+                                    <Button
+                                      key={`${weaponIndex}-${mode}`}
+                                      variant={selectedWeapons[0] === weapon && selectedTargets[0] === mode ? 'default' : 'outline'}
+                                      onClick={() => {
+                                        handleWeaponSelection(weapon, 0);
+                                        handleTargetSelection(mode, 0);
+                                        handleFireModeChangeHandler(weaponIndex, mode as FireMode);
+                                      }}
+                                      className="w-full text-xs"
+                                    >
+                                      {mode}
+                                    </Button>
+                                  ))}
+                                </div>
+                              </div>
+                            ))
+                          }
+                        </div>
                       </div>
                     )}
                     {isRunning && (
@@ -883,7 +1077,7 @@ export function CombatTab({
 
                 <Card>
                   <CardHeader>
-                    <CardTitle>Simple Actions (2)</CardTitle>
+                    <CardTitle>Simple Actions</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="grid grid-cols-2 gap-4">
@@ -900,7 +1094,10 @@ export function CombatTab({
                                   variant={selectedSimpleActions[index] === action ? 'default' : 'outline'}
                                   onClick={() => handleSimpleActionSelection(action as SimpleAction, index)}
                                   className="w-full"
-                                  disabled={selectedActionType === 'Complex'}
+                                  disabled={
+                                    selectedActionType === 'Complex' ||
+                                    (!hasRangedWeapon && ['CallShot', 'ChangeFireMode', 'FireRangedWeapon', 'ReloadWeapon', 'TakeAim'].includes(action))
+                                  }
                                 >
                                   {action}
                                 </Button>
@@ -910,40 +1107,40 @@ export function CombatTab({
                             {(selectedSimpleActions[index] === 'FireRangedWeapon' || 
                               selectedSimpleActions[index] === 'ReloadWeapon' || 
                               selectedSimpleActions[index] === 'ChangeFireMode') && (
-                              <Select 
-                                value={selectedWeapons[index] ? JSON.stringify(selectedWeapons[index]) : ''}
-                                onValueChange={(value) => handleWeaponSelection(JSON.parse(value), index)}
-                              >
-                                <SelectTrigger className="mt-2">
-                                  <SelectValue placeholder="Select Weapon" />
-                                </SelectTrigger>
-                                <SelectContent>
+                              <div className="mt-2 space-y-2">
+                                <div className="grid grid-cols-2 gap-2">
                                   {combatCharacters[currentCharacterIndex].weapons
                                     .filter(w => w.type === 'Ranged')
                                     .map((weapon, i) => (
-                                      <SelectItem key={i} value={JSON.stringify(weapon)}>{weapon.name}</SelectItem>
+                                      <Button
+                                        key={i}
+                                        variant={selectedWeapons[index] === weapon ? 'default' : 'outline'}
+                                        onClick={() => handleWeaponSelection(weapon, index)}
+                                        className="w-full"
+                                      >
+                                        {weapon.name}
+                                      </Button>
                                     ))
                                   }
-                                </SelectContent>
-                              </Select>
-                            )}
-                            {selectedSimpleActions[index] === 'FireRangedWeapon' && (
-                              <Select 
-                                value={selectedTargets[index] || ''}
-                                onValueChange={(value) => handleTargetSelection(value, index)}
-                              >
-                                <SelectTrigger className="mt-2">
-                                  <SelectValue placeholder="Select Target" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {combatCharacters
-                                    .filter(c => c.faction !== combatCharacters[currentCharacterIndex].faction && c.is_conscious)
-                                    .map((target) => (
-                                      <SelectItem key={target.id} value={target.id}>{target.name}</SelectItem>
-                                    ))
-                                  }
-                                </SelectContent>
-                              </Select>
+                                </div>
+                                {selectedSimpleActions[index] === 'FireRangedWeapon' && (
+                                  <div className="grid grid-cols-2 gap-2">
+                                    {combatCharacters
+                                      .filter(c => c.faction !== combatCharacters[currentCharacterIndex].faction && c.is_conscious)
+                                      .map((target) => (
+                                        <Button
+                                          key={target.id}
+                                          variant={selectedTargets[index] === target.id ? 'default' : 'outline'}
+                                          onClick={() => handleTargetSelection(target.id, index)}
+                                          className="w-full"
+                                        >
+                                          {target.name}
+                                        </Button>
+                                      ))
+                                    }
+                                  </div>
+                                )}
+                              </div>
                             )}
                           </CardContent>
                         </Card>
@@ -954,7 +1151,7 @@ export function CombatTab({
 
                 <Card>
                   <CardHeader>
-                    <CardTitle>Complex Action (1)</CardTitle>
+                    <CardTitle>Complex Action</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="grid grid-cols-3 gap-2">
@@ -963,10 +1160,15 @@ export function CombatTab({
                           key={action}
                           variant={selectedComplexAction === action ? 'default' : 'outline'}
                           onClick={() => handleComplexActionSelection(action as ComplexAction)}
-                          className="w-full"
-                          disabled={selectedActionType === 'Simple' || selectedSimpleActions.some(a => a !== null)}
+                          className={`w-full ${action === 'Sprint' ? 'bg-yellow-500 hover:bg-yellow-600 text-white' : ''}`}
+                          disabled={
+                            (selectedActionType === 'Simple' && action !== 'Sprint') ||
+                            selectedSimpleActions.some(a => a !== null) ||
+                            (action === 'MeleeAttack' && !hasMeleeWeapon) ||
+                            (action === 'Sprint' && isSprinting)
+                          }
                         >
-                          {action}
+                          {action === 'Sprint' ? (isSprinting ? 'Cancel Sprint' : 'Sprint') : action}
                         </Button>
                       ))}
                     </div>
@@ -1014,57 +1216,79 @@ export function CombatTab({
                   </CardContent>
                 </Card>
 
-                <div>
-                  <h5 className="font-semibold">Movement</h5>
-                  <p>Max Move Distance: {maxMoveDistance} meters</p>
-                  <p>Remaining Move Distance: {remainingMovement} meters</p>
-                  <Button 
-                    onClick={handleMoveButtonClick}
-                    disabled={isSelectingMoveTarget || remainingMovement <= 0}
-                  >
-                    {isSelectingMoveTarget ? 'Selecting Move Target...' : 'Select Move Target'}
-                  </Button>
-                  {isSelectingMoveTarget && (
-                    <p className="mt-2">Click on the map to select your move target.</p>
-                  )}
-                </div>
-                <Button onClick={() => {
-                  const currentChar = combatCharacters[currentCharacterIndex];
-                  if (!currentChar.is_alive || !currentChar.is_conscious) {
-                    toast.error("Current character is incapacitated and cannot act.");
-                    nextCharacter();
-                    return;
-                  }
-                  if (selectedActionType === 'Simple') {
-                    handleSimpleActionsHandler();
-                  } else if (selectedActionType === 'Complex') {
-                    handleComplexActionHandler();
-                  } else if (selectedFreeAction) {
-                    setActionLog(prev => [...prev, { summary: `${combatCharacters[currentCharacterIndex].name} performed a ${selectedFreeAction} action.`, details: [] }]);
-                    clearInputs();
-                    nextCharacter();
-                  } else if (movementDistance > 0) {
-                    handleMovementHandler();
-                  } else {
-                    toast.error('Please select an action type, enter a movement distance, or choose a free action');
-                  }
-                }}>
-                  Perform Action
-                </Button>
+                <Tooltip.Provider>
+                  <Tooltip.Root>
+                    <Tooltip.Trigger asChild>
+                      <span className="w-full">
+                        <Button 
+                          onClick={() => {
+                            const currentChar = combatCharacters[currentCharacterIndex];
+                            if (!currentChar.is_alive || !currentChar.is_conscious) {
+                              nextCharacter();
+                              return;
+                            }
+                            if (selectedActionType === 'Simple') {
+                              handleSimpleActionsHandler();
+                            } else if (selectedActionType === 'Complex') {
+                              handleComplexActionHandler();
+                            } else if (selectedFreeAction) {
+                              updateActionLog({ summary: `${currentChar.name} performed a ${selectedFreeAction} action.`, details: [] });
+                              clearInputs();
+                              nextCharacter();
+                            } else if (movementDistance > 0) {
+                              handleMovementHandler();
+                            }
+                          }}
+                          className="w-full bg-green-500 hover:bg-green-600 text-white"
+                          disabled={!!isPerformActionDisabled()}
+                        >
+                          Perform Action
+                        </Button>
+                      </span>
+                    </Tooltip.Trigger>
+                    <Tooltip.Portal>
+                      <Tooltip.Content
+                        className="bg-gray-800 text-white p-2 rounded shadow-lg z-50"
+                        sideOffset={5}
+                      >
+                        {isPerformActionDisabled()}
+                        <Tooltip.Arrow className="fill-gray-800" />
+                      </Tooltip.Content>
+                    </Tooltip.Portal>
+                  </Tooltip.Root>
+                </Tooltip.Provider>
               </div>
               <div>
                 <h3 className="font-semibold mb-2">Combat Map</h3>
-                <MapDisplay 
-                  map={gameMap}
-                  placedCharacters={placedCharacters}
-                  placingCharacter={placingCharacter}
-                  onCellClick={handleMapClick}
-                  currentCharacter={combatCharacters[currentCharacterIndex]}
-                  maxMoveDistance={remainingMovement}
-                  isSelectingMoveTarget={isSelectingMoveTarget}
-                  faction1={faction1}
-                  faction2={faction2}
-                />
+                <div className="combat-map"> {/* Add this wrapper div with a class */}
+                  <MapDisplay 
+                    map={gameMap}
+                    placedCharacters={placedCharacters}
+                    placingCharacter={placingCharacter}
+                    onCellClick={handleMapClick}
+                    currentCharacter={combatCharacters[currentCharacterIndex]}
+                    maxMoveDistance={remainingMovement}
+                    isSelectingMoveTarget={isSelectingMoveTarget}
+                    faction1={faction1}
+                    faction2={faction2}
+                    deadCharacters={deadCharacters}
+                    unconsciousCharacters={unconsciousCharacters}
+                  />
+                </div>
+                {/* Add this section to display the most recent log entry */}
+                {mostRecentLog && (
+                  <div className="mt-4 p-2 bg-gray-100 rounded">
+                    <h4 className="font-semibold">Most Recent Action:</h4>
+                    <p>{mostRecentLog.summary}</p>
+                    {mostRecentLog.details && mostRecentLog.details.length > 0 && (
+                      <ul className="list-disc list-inside">
+                        {mostRecentLog.details.map((detail, index) => (
+                          <li key={index}>{detail}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           </CardContent>

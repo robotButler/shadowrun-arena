@@ -15,6 +15,8 @@ interface MapDisplayProps {
   faction1: string[];
   faction2: string[];
   placingCharacter: Character | null; // Add this prop
+  deadCharacters: string[];
+  unconsciousCharacters: string[];
 }
 
 export function MapDisplay({ 
@@ -26,7 +28,9 @@ export function MapDisplay({
   isSelectingMoveTarget,
   faction1 = [],
   faction2 = [],
-  placingCharacter // Add this prop
+  placingCharacter, // Add this prop
+  deadCharacters,
+  unconsciousCharacters
 }: MapDisplayProps) {
   const [hoveredCell, setHoveredCell] = useState<Vector | null>(null);
   const [currentPath, setCurrentPath] = useState<Vector[]>([]);
@@ -145,6 +149,34 @@ export function MapDisplay({
   const getCharacterInitial = (position: Vector) => {
     const character = placedCharacters.find(pc => pc.position.x === position.x && pc.position.y === position.y);
     return character ? character.character.name[0].toUpperCase() : null;
+  };
+
+  const drawCharacter = (ctx: CanvasRenderingContext2D, x: number, y: number, character: Character) => {
+    // ... existing character drawing logic
+
+    // Draw X for dead characters
+    if (deadCharacters.includes(character.id)) {
+      ctx.strokeStyle = 'red';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(x - 10, y - 10);
+      ctx.lineTo(x + 10, y + 10);
+      ctx.moveTo(x + 10, y - 10);
+      ctx.lineTo(x - 10, y + 10);
+      ctx.stroke();
+    }
+
+    // Draw X for unconscious characters
+    if (unconsciousCharacters.includes(character.id)) {
+      ctx.strokeStyle = 'gray';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(x - 10, y - 10);
+      ctx.lineTo(x + 10, y + 10);
+      ctx.moveTo(x + 10, y - 10);
+      ctx.lineTo(x - 10, y + 10);
+      ctx.stroke();
+    }
   };
 
   return (

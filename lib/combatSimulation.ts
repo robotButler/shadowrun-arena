@@ -16,7 +16,12 @@ function calculateRunningDistance(character: CombatCharacter): number {
   return character.attributes.agility * 4; // Updated to running speed
 }
 
-function rollSprinting(character: CombatCharacter): number {
+export function getSprintingDistance(character: CombatCharacter): number {
+  const hits = rollSprinting(character);
+  return calculateSprintingDistance(character, hits);
+}
+
+export function rollSprinting(character: CombatCharacter): number {
   const runningSkill = character.skills.running || 0;
   const sprintPool = runningSkill + character.attributes.strength;
   const rolls = Array(sprintPool).fill(0).map(() => Math.floor(Math.random() * 6) + 1);
@@ -25,9 +30,7 @@ function rollSprinting(character: CombatCharacter): number {
 }
 
 function calculateSprintingDistance(character: CombatCharacter, sprintHits: number): number {
-  const baseDistance = calculateRunningDistance(character);
-  const extraDistance = sprintHits * (character.metatype === 'Dwarf' || character.metatype === 'Troll' ? 1 : 2);
-  return baseDistance + extraDistance;
+  return sprintHits * (character.metatype === 'Dwarf' || character.metatype === 'Troll' ? 1 : 2);
 }
 
 export const createCombatCharacter = (character: Character, faction: 'faction1' | 'faction2', position: number, factionModifiers: Record<string, number>): CombatCharacter => {
