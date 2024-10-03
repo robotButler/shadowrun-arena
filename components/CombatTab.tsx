@@ -211,7 +211,11 @@ export function CombatTab({
     const order: { char: CombatCharacter, phase: number }[] = [];
     characters.forEach(char => {
       if (char.is_conscious && char.is_alive) {
-        order.push({ char, phase: char.current_initiative });
+        let remainingInitiative = char.current_initiative;
+        while (remainingInitiative > 0) {
+          order.push({ char, phase: remainingInitiative });
+          remainingInitiative -= 10;
+        }
       }
     });
     return order.sort((a, b) => b.phase - a.phase);

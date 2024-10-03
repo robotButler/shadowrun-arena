@@ -419,7 +419,7 @@ export const handleSimpleActions = (
       const target = combatCharacters.find(c => c.id === targetId);
       if (target) {
         const distance = calculateDistance(currentChar.position, target.position);
-        const result = resolve_attack(currentChar, target, weapon, weapon.currentFireMode ?? 'SS', distance);
+        const result = resolve_attack(currentChar, target, weapon, weapon.currentFireMode ?? 'SS', distance, gameMap);
         const summary = `${currentChar.name} fired at ${target.name} with ${weapon.name} and dealt ${result.damage_dealt} damage.`;
         actionLog.push({ summary, details: result.messages });
         
