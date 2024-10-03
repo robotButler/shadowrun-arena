@@ -3,6 +3,8 @@
 import { Weapon, Character, RoundResult, MatchResult, CombatCharacter } from './types';
 import { calculateMaxPhysicalHealth, calculateMaxStunHealth, calculatePhysicalLimit, calculate_wound_modifier } from './utils';
 import { ManagedCharacter } from './characterManagement';
+import { getCoverBonus } from './utils';
+import { GameMap } from './map';
 
 // Utility functions
 function roll_d6(numDice: number): number[] {
@@ -70,7 +72,7 @@ function get_range_modifier(weapon_type: string, distance: number): number {
 }
 
 // Update the resolve_attack function
-function resolve_attack(attacker: CombatCharacter, defender: CombatCharacter, weapon: Weapon, fire_mode: 'SS' | 'SA' | 'BF' | 'FA' = 'SA', distance: number = 0): RoundResult {
+function resolve_attack(attacker: CombatCharacter, defender: CombatCharacter, weapon: Weapon, fire_mode: 'SS' | 'SA' | 'BF' | 'FA' = 'SA', distance: number = 0, gameMap: GameMap): RoundResult {
     const result: RoundResult = {
         actingCharacter: attacker.name,
         initiativePhase: 0,
@@ -91,8 +93,13 @@ function resolve_attack(attacker: CombatCharacter, defender: CombatCharacter, we
         const base_pool = attacker.attributes.agility + (attacker.skills['close combat'] || 0);
         const reach_modifier = (weapon?.reach ?? 0) - 0;
         const wound_modifier = calculate_wound_modifier(attacker);
-        const total_attack_pool = Math.max(base_pool + reach_modifier - wound_modifier + attacker.situational_modifiers, 1);
-        result.messages.push(`Melee Attack: Base pool (${base_pool}) + Reach modifier (${reach_modifier}) - Wound modifier (${wound_modifier}) + Situational modifiers (${attacker.situational_modifiers}) = Total attack pool (${total_attack_pool})`);
+        
+        const modifiers = reach_modifier - wound_modifier + attacker.situational_modifiers;
+        const total_attack_pool = Math.max(base_pool + modifiers, 1);
+        
+        let modifierBreakdown = `Base pool (${base_pool}) + Reach modifier (${reach_modifier}) - Wound modifier (${wound_modifier}) + Situational modifiers (${attacker.situational_modifiers})`;
+        
+        result.messages.push(`Melee Attack: ${modifierBreakdown} = Total attack pool (${total_attack_pool})`);
 
         const attack_rolls = roll_d6(total_attack_pool);
         const { hits: attack_hits, ones: attack_ones, isGlitch, isCriticalGlitch } = count_hits_and_ones(attack_rolls);
@@ -194,9 +201,13 @@ function resolve_attack(attacker: CombatCharacter, defender: CombatCharacter, we
         const range_modifier = get_range_modifier(weapon.type, distance);
         const recoil_modifier = calculate_recoil(attacker, weapon, fire_mode);
         const wound_modifier = calculate_wound_modifier(attacker);
+        
         const modifiers = range_modifier + recoil_modifier - wound_modifier + attacker.situational_modifiers;
         const total_attack_pool = Math.max(base_pool + modifiers, 1);
-        result.messages.push(`Ranged Attack: Base pool (${base_pool}) + Range modifier (${range_modifier}) + Recoil modifier (${recoil_modifier}) - Wound modifier (${wound_modifier}) + Situational modifiers (${attacker.situational_modifiers}) = Total attack pool (${total_attack_pool})`);
+        
+        let modifierBreakdown = `Base pool (${base_pool}) + Range modifier (${range_modifier}) + Recoil modifier (${recoil_modifier}) - Wound modifier (${wound_modifier}) + Situational modifiers (${attacker.situational_modifiers})`;
+        
+        result.messages.push(`Ranged Attack: ${modifierBreakdown} = Total attack pool (${total_attack_pool})`);
 
         const attack_rolls = roll_d6(total_attack_pool);
         const { hits: attack_hits, ones: attack_ones, isGlitch, isCriticalGlitch } = count_hits_and_ones(attack_rolls);
@@ -236,8 +247,13 @@ function resolve_attack(attacker: CombatCharacter, defender: CombatCharacter, we
         }
         const defender_wound_modifier = calculate_wound_modifier(defender);
         defense_modifiers += defender_wound_modifier + defender.situational_modifiers;
+        
+        // Add cover bonus only if the defender hasn't moved
+        const coverBonus = !defender.hasMoved ? getCoverBonus(attacker, defender, gameMap) : 0;
+        defense_modifiers += coverBonus;
+        
         const total_defense_pool = Math.max(base_defense_pool + defense_modifiers, 1);
-        result.messages.push(`Defense: Base pool (${base_defense_pool}) + Defense modifiers (${defense_modifiers}) + Wound modifier (${defender_wound_modifier}) + Situational modifiers (${defender.situational_modifiers}) = Total defense pool (${total_defense_pool})`);
+        result.messages.push(`Defense: Base pool (${base_defense_pool}) + Defense modifiers (${defense_modifiers}) + Cover bonus (${coverBonus}) = Total defense pool (${total_defense_pool})`);
 
         const defense_rolls = roll_d6(total_defense_pool);
         const { hits: defense_hits } = count_hits_and_ones(defense_rolls);

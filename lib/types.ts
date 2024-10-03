@@ -67,6 +67,9 @@ export interface CombatCharacter extends Character {
   stun_damage: number;
   is_conscious: boolean;
   is_alive: boolean;
+  isTakingCover: boolean;
+  adjacentCoverCells: Vector[];
+  hasMoved: boolean; // Add this new property
   
   // New methods
   updateStatus(): void;

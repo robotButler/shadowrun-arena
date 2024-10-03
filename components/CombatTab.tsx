@@ -16,8 +16,9 @@ import {
   handleComplexAction,
   handleSimpleActions,
   handleFireModeChange,
+  handleRunAction as handleRunActionFromInterface
 } from '../lib/combatInterface'
-import { calculateMaxPhysicalHealth, calculateMaxStunHealth, isCharacterAlive, isCharacterConscious, calculateDistance, getRandomEmptyPosition, roundVector } from '../lib/utils'
+import { calculateMaxPhysicalHealth, calculateMaxStunHealth, isCharacterAlive, isCharacterConscious, calculateDistance, getRandomEmptyPosition, roundVector, canTakeCover } from '../lib/utils'
 import {
   ActionType,
   SimpleAction,
@@ -57,7 +58,7 @@ export function CombatTab({
   const [currentInitiativePhase, setCurrentInitiativePhase] = useState(0);
   const [currentCharacterIndex, setCurrentCharacterIndex] = useState(0);
   const [selectedActionType, setSelectedActionType] = useState<ActionType | null>(null);
-  const [selectedSimpleActions, setSelectedSimpleActions] = useState<SimpleAction[]>([]);
+  const [selectedSimpleActions, setSelectedSimpleActions] = useState<(SimpleAction | null)[]>([null, null]);
   const [selectedComplexAction, setSelectedComplexAction] = useState<ComplexAction | null>(null);
   const [selectedWeapons, setSelectedWeapons] = useState<(Weapon | null)[]>([null, null]);
   const [selectedTargets, setSelectedTargets] = useState<(string | null)[]>([null, null]);
@@ -89,6 +90,8 @@ export function CombatTab({
   const [sprintBonus, setSprintBonus] = useState<number | null>(null);
   const [isSprinting, setIsSprinting] = useState(false);
   const [mostRecentLog, setMostRecentLog] = useState<{ summary: string, details: string[] } | null>(null);
+  const [runModifier, setRunModifier] = useState(0);
+  const [canUseTakeCover, setCanUseTakeCover] = useState(false);
 
   console.log("CombatTab props:", { 
     characters, 
@@ -161,13 +164,54 @@ export function CombatTab({
     setUnconsciousCharacters(newUnconsciousCharacters);
   }, [combatCharacters]);
 
+  useEffect(() => {
+    if (combatCharacters.length > 0 && gameMap) {
+      const currentChar = combatCharacters[currentCharacterIndex];
+      const opponents = combatCharacters.filter(c => c.faction !== currentChar.faction && c.is_conscious);
+      console.log("Checking if character can take cover:", currentChar.name);
+      console.log("Game map:", gameMap);
+      console.log("Opponents:", opponents);
+      const canTakeCoverResult = canTakeCover(currentChar, gameMap, opponents);
+      console.log("Can take cover result:", canTakeCoverResult);
+      setCanUseTakeCover(canTakeCoverResult);
+    }
+  }, [combatCharacters, currentCharacterIndex, gameMap]);
+
+  useEffect(() => {
+    console.log("Current character index changed to:", currentCharacterIndex);
+    if (combatCharacters.length > 0) {
+      const currentChar = combatCharacters[currentCharacterIndex];
+      console.log("Current character:", currentChar.name);
+      setRemainingMovement(currentChar.movement_remaining);
+      setMaxMoveDistance(getMaxMoveDistance(currentChar));
+    }
+  }, [currentCharacterIndex, combatCharacters]);
+
+  useEffect(() => {
+    console.log("--- Initiative order changed ---");
+    console.log("New initiative order:", currentInitiativeOrder.map(io => `${io.char.name} (${io.phase})`));
+    if (currentInitiativeOrder.length > 0) {
+      const currentChar = currentInitiativeOrder[0].char;
+      console.log("Current character from initiative order:", currentChar.name);
+      const newIndex = combatCharacters.findIndex(char => char.id === currentChar.id);
+      console.log(`Setting current character index to ${newIndex}`);
+      setCurrentCharacterIndex(newIndex);
+      setRemainingMovement(currentChar.movement_remaining);
+      setMaxMoveDistance(getMaxMoveDistance(currentChar));
+      console.log("Updated current character index to:", newIndex);
+    }
+  }, [currentInitiativeOrder, combatCharacters]);
+
+  useEffect(() => {
+    console.log("Initiative order changed:", currentInitiativeOrder.map(io => `${io.char.name} (${io.phase})`));
+    console.log("Current character index:", currentCharacterIndex);
+  }, [currentInitiativeOrder, currentCharacterIndex]);
+
   const calculateInitiativeOrder = (characters: CombatCharacter[]) => {
     const order: { char: CombatCharacter, phase: number }[] = [];
     characters.forEach(char => {
-      let remainingInitiative = char.total_initiative();
-      while (remainingInitiative > 0) {
-        order.push({ char, phase: remainingInitiative });
-        remainingInitiative -= 10;
+      if (char.is_conscious && char.is_alive) {
+        order.push({ char, phase: char.current_initiative });
       }
     });
     return order.sort((a, b) => b.phase - a.phase);
@@ -232,31 +276,20 @@ export function CombatTab({
   };
 
   const nextCharacter = () => {
-    const newInitiativeOrder = currentInitiativeOrder.slice(1);
+    console.log("--- nextCharacter started ---");
+    console.log("Current initiative order:", currentInitiativeOrder.map(io => `${io.char.name} (${io.phase})`));
     
-    if (newInitiativeOrder.length === 0) {
-      // Start a new round
-      setRoundNumber(prev => prev + 1);
-      const updatedCharacters = combatCharacters.map(char => ({
-        ...char,
-        movement_remaining: char.attributes.agility * 2
-      }));
-      setCombatCharacters(updatedCharacters);
-      const newOrder = calculateInitiativeOrder(updatedCharacters);
-      setCurrentInitiativeOrder(newOrder);
-      setCurrentCharacterIndex(combatCharacters.findIndex(char => char.id === newOrder[0].char.id));
-    } else {
-      setCurrentInitiativeOrder(newInitiativeOrder);
-      setCurrentCharacterIndex(combatCharacters.findIndex(char => char.id === newInitiativeOrder[0].char.id));
-    }
+    setCurrentInitiativeOrder(prevOrder => {
+      const newOrder = [...prevOrder];
+      const removedChar = newOrder.shift();
+      console.log(`Removed character from initiative: ${removedChar?.char.name}`);
+      console.log("New initiative order:", newOrder.map(io => `${io.char.name} (${io.phase})`));
+      return newOrder;
+    });
 
-    const nextCharIndex = currentCharacterIndex;
-    setRemainingMovement(combatCharacters[nextCharIndex].movement_remaining);
-    setIsRunning(false);
-    setMaxMoveDistance(getMaxMoveDistance(combatCharacters[nextCharIndex]));
-    setHasMovedWhileRunning(false);
-    setIsSprinting(false);
-    setSprintBonus(null);
+    setCurrentCharacterIndex(0);
+    console.log("Set current character index to 0");
+    console.log("--- nextCharacter finished ---");
   };
 
   const setDefaultWeaponAndTarget = () => {
@@ -296,65 +329,79 @@ export function CombatTab({
       return; // Do nothing if the character doesn't have a ranged weapon
     }
 
-    setSelectedSimpleActions(prev => {
-      const newActions = [...prev];
-      if (newActions[index] === action) {
-        newActions[index] = null;
-      } else {
-        newActions[index] = action;
+    if (action === 'TakeCover') {
+      if (!canUseTakeCover) {
+        toast.error("No suitable cover available.");
+        return;
       }
-
-      // Move this logic inside the setSelectedSimpleActions callback
-      setSelectedActionType(prevActionType => {
-        const anySimpleActionSelected = newActions.some(a => a !== null);
-        if (anySimpleActionSelected) {
-          return 'Simple';
-        } else if (prevActionType === 'Simple') {
-          return null;
+      setSelectedSimpleActions(prev => {
+        const newActions = [...prev];
+        if (newActions[index] === 'TakeCover') {
+          newActions[index] = null;
+        } else {
+          newActions[index] = 'TakeCover';
+          // Deactivate Take Cover for the other Simple Action
+          newActions[1 - index] = newActions[1 - index] === 'TakeCover' ? null : newActions[1 - index];
         }
-        return prevActionType;
-      });
-
-      return newActions;
-    });
-
-    setSelectedComplexAction(null);
-
-    if (selectedSimpleActions[index] === action) {
-      // Deselecting, so clear weapon and target
-      setSelectedWeapons(prev => {
-        const newWeapons = [...prev];
-        newWeapons[index] = null;
-        return newWeapons;
-      });
-      setSelectedTargets(prev => {
-        const newTargets = [...prev];
-        newTargets[index] = null;
-        return newTargets;
+        return newActions;
       });
     } else {
-      // Selecting, so set default weapon and target
-      const currentChar = combatCharacters[currentCharacterIndex];
-      let defaultWeapon = null;
-      let defaultTarget = null;
+      setSelectedSimpleActions(prev => {
+        const newActions = [...prev];
+        if (newActions[index] === action) {
+          newActions[index] = null;
+        } else {
+          newActions[index] = action;
+        }
 
-      if (action === 'FireRangedWeapon') {
-        defaultWeapon = currentChar.weapons.find(w => w.type === 'Ranged') || null;
-        defaultTarget = combatCharacters.find(c => c.faction !== currentChar.faction && c.is_conscious)?.id || null;
-      } else if (action === 'ReloadWeapon' || action === 'ChangeFireMode') {
-        defaultWeapon = currentChar.weapons.find(w => w.type === 'Ranged') || null;
+        // Set selectedActionType to 'Simple' if any action is selected
+        if (newActions.some(a => a !== null)) {
+          setSelectedActionType('Simple');
+        } else {
+          setSelectedActionType(null);
+        }
+
+        return newActions;
+      });
+
+      setSelectedComplexAction(null);
+
+      if (selectedSimpleActions[index] === action) {
+        // Deselecting, so clear weapon and target
+        setSelectedWeapons(prev => {
+          const newWeapons = [...prev];
+          newWeapons[index] = null;
+          return newWeapons;
+        });
+        setSelectedTargets(prev => {
+          const newTargets = [...prev];
+          newTargets[index] = null;
+          return newTargets;
+        });
+      } else {
+        // Selecting, so set default weapon and target
+        const currentChar = combatCharacters[currentCharacterIndex];
+        let defaultWeapon = null;
+        let defaultTarget = null;
+
+        if (action === 'FireRangedWeapon') {
+          defaultWeapon = currentChar.weapons.find(w => w.type === 'Ranged') || null;
+          defaultTarget = combatCharacters.find(c => c.faction !== currentChar.faction && c.is_conscious)?.id || null;
+        } else if (action === 'ReloadWeapon' || action === 'ChangeFireMode') {
+          defaultWeapon = currentChar.weapons.find(w => w.type === 'Ranged') || null;
+        }
+
+        setSelectedWeapons(prev => {
+          const newWeapons = [...prev];
+          newWeapons[index] = defaultWeapon;
+          return newWeapons;
+        });
+        setSelectedTargets(prev => {
+          const newTargets = [...prev];
+          newTargets[index] = defaultTarget;
+          return newTargets;
+        });
       }
-
-      setSelectedWeapons(prev => {
-        const newWeapons = [...prev];
-        newWeapons[index] = defaultWeapon;
-        return newWeapons;
-      });
-      setSelectedTargets(prev => {
-        const newTargets = [...prev];
-        newTargets[index] = defaultTarget;
-        return newTargets;
-      });
     }
   };
 
@@ -459,13 +506,19 @@ export function CombatTab({
       return;
     }
 
+    if (!gameMap) {
+      toast.error("Game map is not initialized.");
+      return;
+    }
+
     const { updatedCharacters, actionLog, combatEnded } = handleComplexAction(
       combatCharacters,
       currentCharacterIndex,
       selectedComplexAction!,
       selectedWeapons[0],
       selectedTargets[0],
-      remainingMovement
+      remainingMovement,
+      gameMap  // Add this parameter
     );
     setCombatCharacters(updatedCharacters);
     updateActionLog(actionLog);
@@ -483,27 +536,82 @@ export function CombatTab({
   };
 
   const handleSimpleActionsHandler = () => {
-    const { updatedCharacters, actionLog, combatEnded } = handleSimpleActions(
-      combatCharacters,
-      currentCharacterIndex,
-      selectedSimpleActions,
-      selectedWeapons,
-      selectedTargets,
-      remainingMovement
-    );
-    setCombatCharacters(updatedCharacters);
-    actionLog.forEach(entry => updateActionLog(entry));
-    
-    // Recalculate initiative order after actions
-    setCurrentInitiativeOrder(calculateInitiativeOrder(updatedCharacters));
-    
-    if (combatEnded) {
-      endCombat();
+    console.log("--- handleSimpleActionsHandler started ---");
+    console.log("Current character:", combatCharacters[currentCharacterIndex].name);
+    console.log("Current initiative order:", currentInitiativeOrder.map(io => `${io.char.name} (${io.phase})`));
+
+    if (!gameMap) {
+      console.error("Game map is not initialized.");
+      toast.error("Game map is not initialized.");
       return;
     }
-    clearInputs();
-    setRemainingMovement(0);
-    nextCharacter();
+
+    // Filter out null actions
+    const validSimpleActions = selectedSimpleActions.filter((action): action is SimpleAction => action !== null);
+    console.log("Valid simple actions:", validSimpleActions);
+
+    if (validSimpleActions.length === 0) {
+      console.error("No valid simple actions selected.");
+      toast.error("No valid simple actions selected.");
+      return;
+    }
+
+    console.log("Calling handleSimpleActions with:", {
+      combatCharacters: combatCharacters.map(c => ({ id: c.id, name: c.name })),
+      currentCharacterIndex,
+      validSimpleActions,
+      selectedWeapons: selectedWeapons.filter((_, index) => selectedSimpleActions[index] !== null),
+      selectedTargets: selectedTargets.filter((_, index) => selectedSimpleActions[index] !== null),
+      remainingMovement,
+      isRunning,
+      gameMap: "Initialized"
+    });
+
+    try {
+      const result = handleSimpleActions(
+        combatCharacters,
+        currentCharacterIndex,
+        validSimpleActions,
+        selectedWeapons.filter((_, index) => selectedSimpleActions[index] !== null),
+        selectedTargets.filter((_, index) => selectedSimpleActions[index] !== null),
+        remainingMovement,
+        isRunning,
+        gameMap
+      );
+
+      console.log("handleSimpleActions result:", result);
+      console.log("Updated characters:", result.updatedCharacters.map(c => `${c.name} (Initiative: ${c.current_initiative})`));
+
+      // Update the combat characters
+      setCombatCharacters(result.updatedCharacters);
+
+      // Update the action log
+      result.actionLog.forEach(entry => updateActionLog(entry));
+
+      // Update the initiative of the current character
+      const updatedCurrentChar = result.updatedCharacters[currentCharacterIndex];
+      updatedCurrentChar.current_initiative -= 10;
+
+      // Recalculate the initiative order
+      const newInitiativeOrder = calculateInitiativeOrder(result.updatedCharacters);
+      setCurrentInitiativeOrder(newInitiativeOrder);
+
+      console.log("New initiative order:", newInitiativeOrder.map(io => `${io.char.name} (${io.phase})`));
+
+      // Set the new current character
+      const newCurrentCharIndex = newInitiativeOrder[0] ? result.updatedCharacters.findIndex(char => char.id === newInitiativeOrder[0].char.id) : 0;
+      setCurrentCharacterIndex(newCurrentCharIndex);
+
+      console.log("New current character index:", newCurrentCharIndex);
+      console.log("New current character:", result.updatedCharacters[newCurrentCharIndex].name);
+
+      // Clear inputs for the next turn
+      clearInputs();
+
+    } catch (error) {
+      console.error("Error in handleSimpleActions:", error);
+    }
+    console.log("--- handleSimpleActionsHandler finished ---");
   };
 
   const handleFreeActionSelection = (action: 'CallShot' | 'ChangeFireMode') => {
@@ -527,7 +635,7 @@ export function CombatTab({
     setSelectedFreeAction(null);
   };
 
-  const handleRunAction = () => {
+  const handleRunActionInComponent = () => {
     if (isSprinting) {
       return; // Do nothing if sprinting
     }
@@ -536,47 +644,19 @@ export function CombatTab({
       return; // Can't deselect after moving
     }
     
-    setIsRunning(prev => !prev);
+    const { updatedCharacter, actionLog } = handleRunActionFromInterface(combatCharacters[currentCharacterIndex], isRunning);
     
-    if (!isRunning) {
-      const currentChar = combatCharacters[currentCharacterIndex];
-      const baseMaxDistance = currentChar.attributes.agility * 2;
-      const newMaxDistance = baseMaxDistance * 2;
-      const newRemainingMovement = newMaxDistance - (baseMaxDistance - currentChar.movement_remaining);
-      
-      const updatedChars = [...combatCharacters];
-      updatedChars[currentCharacterIndex] = {
-        ...currentChar,
-        movement_remaining: newRemainingMovement
-      };
-      setCombatCharacters(updatedChars);
-      
-      setRemainingMovement(newRemainingMovement);
-      setMaxMoveDistance(newMaxDistance);
-      updateActionLog({ 
-        summary: `${currentChar.name} started running.`, 
-        details: [`New max move distance: ${newMaxDistance} meters`, `Remaining movement: ${newRemainingMovement} meters`] 
-      });
-    } else {
-      // Revert the changes if deselecting Run
-      const currentChar = combatCharacters[currentCharacterIndex];
-      const baseMaxDistance = currentChar.attributes.agility * 2;
-      const newRemainingMovement = Math.min(baseMaxDistance, currentChar.movement_remaining);
-      
-      const updatedChars = [...combatCharacters];
-      updatedChars[currentCharacterIndex] = {
-        ...currentChar,
-        movement_remaining: newRemainingMovement
-      };
-      setCombatCharacters(updatedChars);
-      
-      setRemainingMovement(newRemainingMovement);
-      setMaxMoveDistance(baseMaxDistance);
-      updateActionLog({ 
-        summary: `${currentChar.name} stopped running.`, 
-        details: [`Max move distance reverted to: ${baseMaxDistance} meters`, `Remaining movement: ${newRemainingMovement} meters`] 
-      });
-    }
+    setIsRunning(!isRunning);
+    setCombatCharacters(prevChars => {
+      const newChars = [...prevChars];
+      newChars[currentCharacterIndex] = updatedCharacter;
+      return newChars;
+    });
+    
+    // Remove the line setting runModifier as it doesn't exist on CombatCharacter
+    setRemainingMovement(updatedCharacter.movement_remaining);
+    setMaxMoveDistance(updatedCharacter.movement_remaining);
+    updateActionLog(actionLog);
   };
 
   const getAvailableMovementDistances = () => {
@@ -761,14 +841,14 @@ export function CombatTab({
     }
   };
 
-  // Add this function to determine if the Perform Action button should be disabled
+  // Update this function to determine if the Perform Action button should be disabled
   const isPerformActionDisabled = () => {
     const currentChar = combatCharacters[currentCharacterIndex];
     if (!currentChar?.is_alive || !currentChar?.is_conscious) {
       return "Current character is incapacitated and cannot act.";
     }
-    if (!selectedActionType && !selectedFreeAction && movementDistance === 0) {
-      return "Please select an action type, enter a movement distance, or choose a free action.";
+    if (!selectedActionType && !selectedFreeAction && movementDistance === 0 && !selectedSimpleActions.some(action => action !== null)) {
+      return "Please select an action type, enter a movement distance, choose a free action, or select at least one simple action.";
     }
     return null; // Not disabled
   };
@@ -938,8 +1018,8 @@ export function CombatTab({
                     </CardHeader>
                     <CardContent>
                       <div className="grid grid-cols-[auto,auto,auto,1fr] gap-x-1 gap-y-1 text-sm">
-                        {initiativeOrder.map(({ char, phase }, index) => {
-                          const isActiveCharacter = char.id === combatCharacters[currentCharacterIndex].id && index === 0;
+                        {currentInitiativeOrder.map(({ char, phase }, index) => {
+                          const isActiveCharacter = index === 0;
                           const hasWoundModifier = char.original_initiative !== char.total_initiative();
                           const woundModifier = char.original_initiative - char.current_initiative;
                           const textColor = isActiveCharacter 
@@ -1033,8 +1113,8 @@ export function CombatTab({
                       </Button>
                       <Button
                         variant={isRunning ? 'default' : 'outline'}
-                        onClick={handleRunAction}
-                        disabled={isSprinting} // Disable when sprinting
+                        onClick={handleRunActionInComponent}
+                        disabled={isSprinting}
                       >
                         <Play className="mr-2 h-4 w-4" /> Run
                       </Button>
@@ -1070,7 +1150,7 @@ export function CombatTab({
                       </div>
                     )}
                     {isRunning && (
-                      <p className="mt-2">Character is running. Movement distance doubled for this turn.</p>
+                      <p className="mt-2">Character is running. Movement distance doubled for this turn. Run Modifier: {runModifier}</p>
                     )}
                   </CardContent>
                 </Card>
@@ -1222,21 +1302,36 @@ export function CombatTab({
                       <span className="w-full">
                         <Button 
                           onClick={() => {
+                            console.log("--- Perform Action button clicked ---");
+                            console.log("Current character:", combatCharacters[currentCharacterIndex].name);
+                            console.log("Selected action type:", selectedActionType);
+                            console.log("Selected simple actions:", selectedSimpleActions);
+
                             const currentChar = combatCharacters[currentCharacterIndex];
                             if (!currentChar.is_alive || !currentChar.is_conscious) {
+                              console.log("Current character is incapacitated");
                               nextCharacter();
                               return;
                             }
-                            if (selectedActionType === 'Simple') {
+
+                            const hasSimpleAction = selectedSimpleActions.some(action => action !== null);
+
+                            if (hasSimpleAction || selectedActionType === 'Simple') {
+                              console.log("Calling handleSimpleActionsHandler");
                               handleSimpleActionsHandler();
                             } else if (selectedActionType === 'Complex') {
+                              console.log("Calling handleComplexActionHandler");
                               handleComplexActionHandler();
                             } else if (selectedFreeAction) {
+                              console.log("Handling Free Action");
                               updateActionLog({ summary: `${currentChar.name} performed a ${selectedFreeAction} action.`, details: [] });
                               clearInputs();
                               nextCharacter();
                             } else if (movementDistance > 0) {
+                              console.log("Calling handleMovementHandler");
                               handleMovementHandler();
+                            } else {
+                              console.log("No action selected");
                             }
                           }}
                           className="w-full bg-green-500 hover:bg-green-600 text-white"

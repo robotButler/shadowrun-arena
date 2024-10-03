@@ -129,3 +129,133 @@ export function roundVector(vector: Vector): Vector {
     y: Math.round(vector.y)
   };
 }
+
+/**
+ * Returns all cells intersected by a line between the centers of two given cells.
+ * @param start The starting cell coordinates
+ * @param end The ending cell coordinates
+ * @returns An array of cell coordinates intersected by the line
+ */
+export function getIntersectedCells(start: Vector, end: Vector): Vector[] {
+  const intersectedCells: Vector[] = [];
+  let x1 = Math.round(start.x);
+  let y1 = Math.round(start.y);
+  const x2 = Math.round(end.x);
+  const y2 = Math.round(end.y);
+
+  const dx = Math.abs(x2 - x1);
+  const dy = Math.abs(y2 - y1);
+  const sx = x1 < x2 ? 1 : -1;
+  const sy = y1 < y2 ? 1 : -1;
+
+  let err = dx - dy;
+  let e2: number;
+
+  while (true) {
+    intersectedCells.push({ x: x1, y: y1 });
+
+    if (x1 === x2 && y1 === y2) break;
+
+    e2 = 2 * err;
+    if (e2 > -dy) {
+      err -= dy;
+      x1 += sx;
+      // Add the cell in the x direction
+      intersectedCells.push({ x: x1, y: y1 });
+    }
+    if (e2 < dx) {
+      err += dx;
+      y1 += sy;
+      // Add the cell in the y direction
+      intersectedCells.push({ x: x1, y: y1 });
+    }
+  }
+
+  // Remove duplicates
+  return intersectedCells.filter((cell, index, self) =>
+    index === self.findIndex((t) => t.x === cell.x && t.y === cell.y)
+  );
+}
+
+export function isAdjacentToCover(character: CombatCharacter, gameMap: GameMap): Vector[] {
+  const adjacentCells: Vector[] = [];
+  const { x, y } = character.position;
+
+  if (!gameMap) {
+    console.error("Game map is undefined in isAdjacentToCover");
+    return adjacentCells;
+  }
+
+  console.log("Checking adjacent cells for cover");
+  console.log("Character position:", { x, y });
+
+  for (let dx = -1; dx <= 1; dx++) {
+    for (let dy = -1; dy <= 1; dy++) {
+      if (dx === 0 && dy === 0) continue;
+      const newX = Math.floor(x + dx);
+      const newY = Math.floor(y + dy);
+      if (newX >= 0 && newX < gameMap.width && newY >= 0 && newY < gameMap.height) {
+        const cellType = gameMap.cells[newY * gameMap.width + newX];
+        console.log(`Cell at (${newX}, ${newY}):`, cellType);
+        if (cellType === CellType.PartialCover || cellType === CellType.HardCover) {
+          adjacentCells.push({ x: newX, y: newY });
+          console.log("Found cover cell:", { x: newX, y: newY });
+        }
+      }
+    }
+  }
+
+  console.log("Adjacent cover cells:", adjacentCells);
+  return adjacentCells;
+}
+
+export function canTakeCover(character: CombatCharacter, gameMap: GameMap, opponents: CombatCharacter[]): boolean {
+  if (!gameMap) {
+    console.error("Game map is undefined in canTakeCover");
+    return false;
+  }
+
+  console.log("Checking if character can take cover:", character.name);
+  console.log("Character position:", character.position);
+  console.log("Game map dimensions:", gameMap.width, "x", gameMap.height);
+
+  const adjacentCoverCells = isAdjacentToCover(character, gameMap);
+  console.log("Adjacent cover cells:", adjacentCoverCells);
+
+  if (adjacentCoverCells.length === 0) {
+    console.log("No adjacent cover cells found");
+    return false;
+  }
+
+  for (const opponent of opponents) {
+    console.log("Checking against opponent:", opponent.name);
+    console.log("Opponent position:", opponent.position);
+
+    const intersectedCells = getIntersectedCells(character.position, opponent.position);
+    console.log("Intersected cells:", intersectedCells);
+
+    for (const cell of intersectedCells) {
+      if (adjacentCoverCells.some(coverCell => coverCell.x === cell.x && coverCell.y === cell.y)) {
+        console.log("Found intersecting cover cell:", cell);
+        return true;
+      }
+    }
+  }
+
+  console.log("No suitable cover found");
+  return false;
+}
+
+export function getCoverBonus(attacker: CombatCharacter, defender: CombatCharacter, gameMap: GameMap): number {
+  if (!defender.isTakingCover) return 0;
+
+  const intersectedCells = getIntersectedCells(attacker.position, defender.position);
+  for (const cell of intersectedCells) {
+    if (defender.adjacentCoverCells.some(coverCell => coverCell.x === cell.x && coverCell.y === cell.y)) {
+      const cellType = gameMap.cells[cell.y * gameMap.width + cell.x];
+      return cellType === CellType.PartialCover ? 2 : 4;
+    }
+  }
+
+  return 0;
+}

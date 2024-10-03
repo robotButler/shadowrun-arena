@@ -7,7 +7,7 @@ import {
   apply_damage,
   check_combat_end,
 } from './combat';
-import { calculateMaxPhysicalHealth, calculateMaxStunHealth, isCharacterAlive, isCharacterConscious, calculate_wound_modifier } from './utils';
+import { calculateMaxPhysicalHealth, calculateMaxStunHealth, isCharacterAlive, isCharacterConscious, calculate_wound_modifier, canTakeCover, isAdjacentToCover } from './utils';
 import {
   ActionType,
   SimpleAction,
@@ -67,6 +67,9 @@ export const startNewCombat = (
       previousPhysicalDamage: 0,
       previousStunDamage: 0,
       movement_remaining: 0,
+      isTakingCover: false,
+      adjacentCoverCells: [],
+      hasMoved: false,
     };
   });
 
@@ -118,6 +121,9 @@ export const createCombatCharacter = (
   total_damage_dealt: 0,
   previousPhysicalDamage: 0,
   previousStunDamage: 0,
+  isTakingCover: false,
+  adjacentCoverCells: [],
+  hasMoved: false,
   calculate_wound_modifier: function() {
     return calculate_wound_modifier(this);
   },
@@ -253,7 +259,9 @@ export const handleMovement = (
   updatedChars[currentCharacterIndex] = {
     ...currentChar,
     position: newPosition,
-    movement_remaining: currentChar.movement_remaining - actualMovementDistance
+    movement_remaining: currentChar.movement_remaining - actualMovementDistance,
+    isTakingCover: false, // Reset cover when moving
+    hasMoved: true, // Mark that the character has moved
   };
 
   const newDistance = calculateDistance(newPosition, target.position);
@@ -268,7 +276,8 @@ export const handleMovement = (
         `New position: (${newPosition.x.toFixed(2)}, ${newPosition.y.toFixed(2)})`,
         `New distance to target: ${newDistance.toFixed(2)} meters`,
         `Remaining movement: ${remainingDistance.toFixed(2)} meters`,
-        isRunning ? `Running used as a Free Action` : ''
+        isRunning ? `Running used as a Free Action` : '',
+        `Lost cover bonus due to movement`
       ].filter(Boolean)
     },
     remainingDistance
@@ -281,7 +290,8 @@ export const handleComplexAction = (
   selectedComplexAction: ComplexAction,
   selectedWeapon: Weapon | null,
   selectedTargetId: string | null,
-  remainingMovement: number
+  remainingMovement: number,
+  gameMap: GameMap  // Add this parameter
 ): {
   updatedCharacters: CombatCharacter[],
   actionLog: { summary: string, details: string[] },
@@ -333,7 +343,7 @@ export const handleComplexAction = (
         }
       }
 
-      const result = resolve_attack(currentChar, target, selectedWeapon, selectedWeapon.currentFireMode ?? undefined, distance);
+      const result = resolve_attack(currentChar, target, selectedWeapon, selectedWeapon.currentFireMode ?? undefined, distance, gameMap);
       
       actionLog.summary = `${currentChar.name} attacked ${target.name} with ${selectedWeapon.name}`;
       if (result.criticalGlitch) {
@@ -379,18 +389,30 @@ export const handleSimpleActions = (
   selectedWeapons: (Weapon | null)[],
   selectedTargets: (string | null)[],
   remainingMovement: number,
-  isRunning: boolean = false
+  isRunning: boolean = false,
+  gameMap: GameMap
 ): {
   updatedCharacters: CombatCharacter[],
   actionLog: { summary: string, details: string[] }[],
   combatEnded: boolean
 } => {
+  console.log("handleSimpleActions called with:", {
+    currentCharacterIndex,
+    selectedSimpleActions,
+    selectedWeapons,
+    selectedTargets,
+    remainingMovement,
+    isRunning,
+    gameMap: gameMap ? "Initialized" : "Not initialized"
+  });
+
   const currentChar = combatCharacters[currentCharacterIndex];
   let updatedChars = [...combatCharacters];
   const actionLog: { summary: string, details: string[] }[] = [];
   let combatEnded = false;
 
   selectedSimpleActions.forEach((action, index) => {
+    console.log(`Processing action: ${action}`);
     if (action === 'FireRangedWeapon' && selectedWeapons[index] && selectedTargets[index]) {
       const weapon = selectedWeapons[index] as Weapon;
       const targetId = selectedTargets[index]!;
@@ -423,12 +445,32 @@ export const handleSimpleActions = (
     } else if (action === 'TakeAim') {
       actionLog.push({ summary: `${currentChar.name} took aim.`, details: [] });
     } else if (action === 'TakeCover') {
-      actionLog.push({ summary: `${currentChar.name} took cover.`, details: [] });
+      console.log("Attempting to take cover");
+      const opponents = updatedChars.filter(c => c.faction !== currentChar.faction && c.is_conscious);
+      if (canTakeCover(currentChar, gameMap, opponents)) {
+        console.log("Taking cover successful");
+        updatedChars[currentCharacterIndex] = {
+          ...updatedChars[currentCharacterIndex],
+          isTakingCover: true,
+          adjacentCoverCells: isAdjacentToCover(currentChar, gameMap),
+          hasMoved: false,
+        };
+        actionLog.push({ summary: `${currentChar.name} took cover.`, details: [] });
+      } else {
+        console.log("Taking cover failed");
+        actionLog.push({ summary: `${currentChar.name} attempted to take cover but couldn't find suitable cover.`, details: [] });
+      }
     } else if (action === 'CallShot') {
       actionLog.push({ summary: `${currentChar.name} called a shot.`, details: [] });
     } else if (action === 'ChangeFireMode') {
       actionLog.push({ summary: `${currentChar.name} changed fire mode.`, details: [] });
     }
+  });
+
+  console.log("handleSimpleActions finished. Returning:", {
+    updatedCharacters: updatedChars.map(c => ({ id: c.id, name: c.name })),
+    actionLog,
+    combatEnded
   });
 
   return { updatedCharacters: updatedChars, actionLog, combatEnded };
@@ -534,4 +576,36 @@ export const displayRoundSummary = (
   }
 
   return { updatedCharacters: updatedChars, roundSummary, combatEnded };
+};
+
+export const handleRunAction = (character: CombatCharacter, isCurrentlyRunning: boolean): { updatedCharacter: CombatCharacter, actionLog: { summary: string, details: string[] } } => {
+  const updatedCharacter = { ...character };
+  
+  if (!isCurrentlyRunning) {
+    // Start running
+    updatedCharacter.movement_remaining *= 2;
+    return {
+      updatedCharacter,
+      actionLog: {
+        summary: `${character.name} started running.`,
+        details: [
+          `Movement doubled: ${updatedCharacter.movement_remaining} meters`,
+          `Run Modifier applied`
+        ]
+      }
+    };
+  } else {
+    // Stop running
+    updatedCharacter.movement_remaining = Math.floor(updatedCharacter.movement_remaining / 2);
+    return {
+      updatedCharacter,
+      actionLog: {
+        summary: `${character.name} stopped running.`,
+        details: [
+          `Movement reverted: ${updatedCharacter.movement_remaining} meters`,
+          `Run Modifier removed`
+        ]
+      }
+    };
+  }
 };
