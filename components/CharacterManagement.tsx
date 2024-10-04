@@ -7,8 +7,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Checkbox } from "@/components/ui/checkbox"
 import { PlusCircle, Trash2, Edit } from 'lucide-react'
-import { Character, Weapon, Metatype, FireMode } from '../lib/types'
-import { initialCharacter, initialWeapon, saveCharacter, deleteCharacter, addWeapon, removeWeapon } from '../lib/characterManagement'
+import { Character, Weapon, Metatype, FireMode, WeaponType } from '../lib/types'
+import { initialCharacter, initialWeapon, saveCharacter, deleteCharacter, addWeapon, removeWeapon, editWeapon } from '../lib/characterManagement'
 
 interface CharacterManagementProps {
   characters: Character[];
@@ -34,6 +34,7 @@ export function CharacterManagement({
   const [editingCharacter, setEditingCharacter] = useState<Character | null>(null);
   const [showWeaponForm, setShowWeaponForm] = useState(false);
   const [newWeapon, setNewWeapon] = useState<Weapon>(initialWeapon);
+  const [editingWeaponIndex, setEditingWeaponIndex] = useState<number | null>(null);
 
   const handleSaveCharacter = (character: Character) => {
     saveCharacter(character, characters, setCharacters, setEditingCharacter, setShowWeaponForm);
@@ -49,6 +50,27 @@ export function CharacterManagement({
 
   const handleRemoveWeapon = (index: number) => {
     removeWeapon(index, editingCharacter, setEditingCharacter);
+  };
+
+  const handleEditWeapon = (index: number) => {
+    if (editingCharacter) {
+      setNewWeapon(editingCharacter.weapons[index]);
+      setEditingWeaponIndex(index);
+      setShowWeaponForm(true);
+    }
+  };
+
+  const handleSaveWeapon = () => {
+    if (!editingCharacter) return;
+
+    if (editingWeaponIndex !== null) {
+      editWeapon(newWeapon, editingWeaponIndex, editingCharacter, setEditingCharacter);
+      setEditingWeaponIndex(null);
+    } else {
+      addWeapon(newWeapon, editingCharacter, setEditingCharacter, setNewWeapon, setShowWeaponForm);
+    }
+    setShowWeaponForm(false);
+    setNewWeapon(initialWeapon);
   };
 
   return (
@@ -194,11 +216,16 @@ export function CharacterManagement({
                         AP: {weapon.ap} | RC: {weapon.recoilComp} | ACC: {weapon.accuracy} | 
                         {weapon.type === 'Ranged' ? `Ammo: ${weapon.ammoCount} | Modes: ${weapon.fireModes?.join(', ') ?? 'N/A'}` : `Reach: ${weapon.reach}`}
                       </span>
-                      <Button type="button" variant="outline" size="sm" onClick={() => handleRemoveWeapon(index)}>Remove</Button>
+                      <Button type="button" variant="outline" size="sm" onClick={() => handleEditWeapon(index)}>
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button type="button" variant="outline" size="sm" onClick={() => handleRemoveWeapon(index)}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   ))}
                   {!showWeaponForm && (
-                    <Button type="button" onClick={() => setShowWeaponForm(true)}>Add Weapon</Button>
+                    <Button type="button" onClick={() => { setShowWeaponForm(true); setEditingWeaponIndex(null); }}>Add Weapon</Button>
                   )}
                   {showWeaponForm && (
                     <div className="grid grid-cols-2 gap-4">
@@ -354,7 +381,29 @@ export function CharacterManagement({
                           </div>
                         </div>
                       )}
-                      <Button type="button" onClick={handleAddWeapon}>Save Weapon</Button>
+                      {newWeapon.type === 'Ranged' && (
+                        <div className="flex flex-col space-y-1.5">
+                          <Label htmlFor="weaponType">Weapon Type</Label>
+                          <Select
+                            value={newWeapon.weaponType}
+                            onValueChange={(value) => setNewWeapon({ ...newWeapon, weaponType: value as WeaponType })}
+                          >
+                            <SelectTrigger id="weaponType">
+                              <SelectValue placeholder="Select weapon type" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {Object.values(WeaponType)
+                                .filter(type => type !== WeaponType.ThrowingKnife && type !== WeaponType.Shuriken)
+                                .map((type) => (
+                                  <SelectItem key={type} value={type}>{type}</SelectItem>
+                                ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                      <Button type="button" onClick={handleSaveWeapon}>
+                        {editingWeaponIndex !== null ? 'Update Weapon' : 'Save Weapon'}
+                      </Button>
                     </div>
                   )}
                 </div>

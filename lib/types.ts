@@ -21,6 +21,7 @@ export interface Weapon {
   recoilComp?: number; // Add this if it's not already present
   damageType: 'P' | 'S'; // Add this if it's not already present
   reach?: number;
+  weaponType: WeaponType;
 }
 
 // Character interfaces
@@ -121,3 +122,39 @@ export interface FactionSelectorProps {
 }
 
 // Add any other types or interfaces you need here
+
+// Add this enum to the file
+export enum WeaponType {
+  Taser = "Taser",
+  HoldOutPistol = "Hold-Out Pistol",
+  LightPistol = "Light Pistol",
+  HeavyPistol = "Heavy Pistol",
+  MachinePistol = "Machine Pistol",
+  SMG = "SMG",
+  AssaultRifle = "Assault Rifle",
+  ShotgunFlechette = "Shotgun (flechette)",
+  ShotgunSlug = "Shotgun (slug)",
+  SniperRifle = "Sniper Rifle",
+  LightMachinegun = "Light Machinegun",
+  MediumHeavyMachinegun = "Medium/Heavy Machinegun",
+  AssaultCannon = "Assault Cannon",
+  GrenadeLauncher = "Grenade Launcher",
+  MissileLauncher = "Missile Launcher",
+  Bow = "Bow",
+  LightCrossbow = "Light Crossbow",
+  MediumCrossbow = "Medium Crossbow",
+  HeavyCrossbow = "Heavy Crossbow",
+  ThrowingKnife = "Throwing Knife",
+  Shuriken = "Shuriken",
+  StandardGrenade = "Standard Grenade",
+  AerodynamicGrenade = "Aerodynamic Grenade",
+}
+
+// Update the Weapon interface to include the new WeaponType
+export interface Weapon {
+  // ... (existing properties)
+  weaponType: WeaponType;
+  // ... (other properties)
+}
+
+// ... (rest of the existing code)

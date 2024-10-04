@@ -1,4 +1,4 @@
-import { Character, CombatCharacter, Weapon, Attribute, Skill, Metatype, Vector } from './types'
+import { Character, CombatCharacter, Weapon, Attribute, Skill, Metatype, Vector, WeaponType } from './types'
 import { toast } from 'react-toastify'
 import { calculatePhysicalLimit, calculateMentalLimit } from './utils'
 
@@ -28,7 +28,8 @@ export const initialWeapon: Weapon = {
   fireModes: [],
   currentFireMode: 'SS',
   ammoCount: 0,
-  reach: 1
+  reach: 1,
+  weaponType: WeaponType.ThrowingKnife  // Default for Melee weapons
 }
 
 export const saveCharacter = (character: Character, characters: Character[], setCharacters: React.Dispatch<React.SetStateAction<Character[]>>, setEditingCharacter: React.Dispatch<React.SetStateAction<Character | null>>, setShowWeaponForm: React.Dispatch<React.SetStateAction<boolean>>) => {
@@ -108,9 +109,13 @@ export const addWeapon = (
   if (!editingCharacter) return
 
   if (validateWeapon(weapon)) {
+    const finalWeapon = {
+      ...weapon,
+      weaponType: weapon.type === 'Melee' ? WeaponType.ThrowingKnife : weapon.weaponType
+    };
     setEditingCharacter({
       ...editingCharacter,
-      weapons: [...editingCharacter.weapons, weapon]
+      weapons: [...editingCharacter.weapons, finalWeapon]
     })
     setNewWeapon(initialWeapon)
     setShowWeaponForm(false)
@@ -124,6 +129,23 @@ export const removeWeapon = (index: number, editingCharacter: Character | null, 
     setEditingCharacter({ ...editingCharacter, weapons: updatedWeapons })
   }
 }
+
+export const editWeapon = (
+  weapon: Weapon,
+  index: number,
+  editingCharacter: Character,
+  setEditingCharacter: React.Dispatch<React.SetStateAction<Character | null>>
+) => {
+  if (validateWeapon(weapon)) {
+    const updatedWeapons = [...editingCharacter.weapons];
+    updatedWeapons[index] = weapon;
+    setEditingCharacter({
+      ...editingCharacter,
+      weapons: updatedWeapons
+    });
+    toast.success('Weapon updated successfully');
+  }
+};
 
 export class ManagedCharacter implements CombatCharacter {
   id: string;

@@ -1,6 +1,6 @@
 // combat.ts
 
-import { Weapon, Character, RoundResult, MatchResult, CombatCharacter } from './types';
+import { WeaponType, Weapon, Character, RoundResult, MatchResult, CombatCharacter } from './types';
 import { calculateMaxPhysicalHealth, calculateMaxStunHealth, calculatePhysicalLimit, calculate_wound_modifier } from './utils';
 import { ManagedCharacter } from './characterManagement';
 import { getCoverBonus } from './utils';
@@ -34,6 +34,114 @@ const range_modifiers: { [weaponType: string]: [number, number][] } = {
     // 'Pistol': [[0, 0], [5, -1], [20, -3], [40, -6]],
 };
 
+// Add these constants and functions at the top of the file
+// From the player's manual:
+// RANGE TABLE
+// DICE POOL MODIFIER SHORT MEDIUM LONG EXTREME
+// +0 –1 –3 –6
+// PISTOLS RANGE IN METERS
+// Taser 0–5 6–10 11–15 16–20
+// Hold-Out Pistol 0–5 6–15 16–30 31–50
+// Light Pistol 0–5 6–15 16–30 31–50
+// Heavy Pistol 0–5 6–20 21–40 41–60
+// AUTOMATICS RANGE IN METERS
+// Machine Pistol 0–5 6–15 16–30 31–50
+// SMG 0–10 11–40 41–80 81–150
+// Assault Rifle 0–25 26–150 151–350 351–550
+// LONGARMS RANGE IN METERS
+// Shotgun (flechette) 0–15 16–30 31–45 45–60
+// Shotgun (slug) 0–10 11–40 41–80 81–150
+// Sniper Rifle 0–50 51–350 351–800 801–1,500
+// HEAVY WEAPONS RANGE IN METERS
+// Light Machinegun 0–25 26–200 201–400 401–800
+// Medium/Heavy Machinegun 0–40 41–250 251–750 751–1,200
+// Assault Cannon 0–50 51–300 301–750 751–1,500
+// Grenade Launcher 5–50* 51–100 101–150 151–500
+// Missile Launcher 20–70* 71–150 151–450 451–1,500
+// BALLISTIC PROJECTILES RANGE IN METERS
+// Bow 0–STR To STR x 10 To STR x 30 To STR x 60
+// Light Crossbow 0–6 7–24 25–60 61–120
+// Medium Crossbow 0–9 10–36 37–90 91–150
+// Heavy Crossbow 0–15 16–45 46–120 121–180
+// IMPACT PROJECTILES RANGE IN METERS
+// Thrown Knife 0–STR To STR x 2 To STR x 3 To STR x 5
+// Shuriken 0–STR To STR x 2 To STR x 5 To STR x 7
+// THROWN GRENADES RANGE IN METERS
+// Standard 0–STR x 2 To STR x 4 To STR x 6 To STR x 10
+// Aerodynamic 0–STR x 2 To STR x 4 To STR x 8 To STR x 15
+const rangeTable: { [key in WeaponType]: number[][] } = {
+  [WeaponType.Taser]: [[0, 5], [6, 10], [11, 15], [16, 20]],
+  [WeaponType.HoldOutPistol]: [[0, 5], [6, 15], [16, 30], [31, 50]],
+  [WeaponType.LightPistol]: [[0, 5], [6, 15], [16, 30], [31, 50]],
+  [WeaponType.HeavyPistol]: [[0, 5], [6, 20], [21, 40], [41, 60]],
+  [WeaponType.MachinePistol]: [[0, 5], [6, 15], [16, 30], [31, 50]],
+  [WeaponType.SMG]: [[0, 10], [11, 40], [41, 80], [81, 150]],
+  [WeaponType.AssaultRifle]: [[0, 25], [26, 150], [151, 350], [351, 550]],
+  [WeaponType.ShotgunFlechette]: [[0, 15], [16, 30], [31, 45], [45, 60]],
+  [WeaponType.ShotgunSlug]: [[0, 10], [11, 40], [41, 80], [81, 150]],
+  [WeaponType.SniperRifle]: [[0, 50], [51, 350], [351, 800], [801, 1500]],
+  [WeaponType.LightMachinegun]: [[0, 25], [26, 200], [201, 400], [401, 800]],
+  [WeaponType.MediumHeavyMachinegun]: [[0, 40], [41, 250], [251, 750], [751, 1200]],
+  [WeaponType.AssaultCannon]: [[0, 50], [51, 300], [301, 750], [751, 1500]],
+  [WeaponType.GrenadeLauncher]: [[5, 50], [51, 100], [101, 150], [151, 500]],
+  [WeaponType.MissileLauncher]: [[20, 70], [71, 150], [151, 450], [451, 1500]],
+  [WeaponType.Bow]: [],
+  [WeaponType.LightCrossbow]: [[0, 6], [7, 24], [25, 60], [61, 120]],
+  [WeaponType.MediumCrossbow]: [[0, 9], [10, 36], [37, 90], [91, 150]],
+  [WeaponType.HeavyCrossbow]: [[0, 15], [16, 45], [46, 120], [121, 180]],
+  [WeaponType.ThrowingKnife]: [],
+  [WeaponType.Shuriken]: [],
+  [WeaponType.StandardGrenade]: [],
+  [WeaponType.AerodynamicGrenade]: [],
+};
+
+const rangeModifiers = [0, -1, -3, -6];
+
+function getRangeCategory(weapon: Weapon, distance: number, strength?: number): { category: string, modifier: number } {
+  const weaponType = weapon.weaponType;
+  let ranges: number[][];
+
+  if (
+    weaponType === WeaponType.Bow ||
+    weaponType === WeaponType.ThrowingKnife ||
+    weaponType === WeaponType.Shuriken ||
+    weaponType === WeaponType.StandardGrenade ||
+    weaponType === WeaponType.AerodynamicGrenade
+  ) {
+    if (!strength) {
+      throw new Error("Strength is required for this weapon type.");
+    }
+    // Calculate dynamic ranges based on Strength
+    switch (weaponType) {
+      case WeaponType.Bow:
+        ranges = [[0, strength], [strength + 1, strength * 10], [strength * 10 + 1, strength * 30], [strength * 30 + 1, strength * 60]];
+        break;
+      case WeaponType.ThrowingKnife:
+        ranges = [[0, strength], [strength + 1, strength * 2], [strength * 2 + 1, strength * 3], [strength * 3 + 1, strength * 5]];
+        break;
+      case WeaponType.Shuriken:
+        ranges = [[0, strength], [strength + 1, strength * 2], [strength * 2 + 1, strength * 5], [strength * 5 + 1, strength * 7]];
+        break;
+      case WeaponType.StandardGrenade:
+        ranges = [[1, strength * 2], [strength * 2 + 1, strength * 4], [strength * 4 + 1, strength * 6], [strength * 6 + 1, strength * 10]];
+        break;
+      case WeaponType.AerodynamicGrenade:
+        ranges = [[1, strength * 2], [strength * 2 + 1, strength * 4], [strength * 4 + 1, strength * 8], [strength * 8 + 1, strength * 15]];
+        break;
+    }
+  } else {
+    ranges = rangeTable[weaponType];
+  }
+
+  const categories = ['Short', 'Medium', 'Long', 'Extreme'];
+  for (let i = 0; i < ranges.length; i++) {
+    if (distance <= ranges[i][1] && distance >= ranges[i][0]) {
+      return { category: categories[i], modifier: rangeModifiers[i] };
+    }
+  }
+  return { category: 'Extreme', modifier: rangeModifiers[rangeModifiers.length - 1] };
+}
+
 // Functions
 function roll_initiative(character: CombatCharacter): { initiative_total: number, initiative_rolls: number[] } {
     const initiative_score = character.attributes.reaction + character.attributes.intuition;
@@ -58,8 +166,8 @@ function calculate_recoil(attacker: Character, weapon: Weapon, fire_mode: string
     return recoil_penalty;
 }
 
-function get_range_modifier(weapon_type: string, distance: number): number {
-    const ranges = range_modifiers[weapon_type];
+function get_range_modifier(weapon_type: WeaponType, distance: number): number {
+    const ranges = rangeTable[weapon_type];
     if (!ranges) {
         return 0;
     }
@@ -73,6 +181,7 @@ function get_range_modifier(weapon_type: string, distance: number): number {
 
 // Update the resolve_attack function
 function resolve_attack(attacker: CombatCharacter, defender: CombatCharacter, weapon: Weapon, fire_mode: 'SS' | 'SA' | 'BF' | 'FA' = 'SA', distance: number = 0, gameMap: GameMap): RoundResult {
+    console.log('Attacking with weapon:', weapon);
     const result: RoundResult = {
         actingCharacter: attacker.name,
         initiativePhase: 0,
@@ -197,8 +306,12 @@ function resolve_attack(attacker: CombatCharacter, defender: CombatCharacter, we
         }
     } else {
         // Ranged attack
+        const distanceInt = Math.floor(distance);
+        const { category, modifier } = getRangeCategory(weapon, distanceInt, attacker.attributes.strength);
+        result.messages.push(`Ranged Attack: ${weapon.weaponType}, Range: ${distanceInt}m (${category}, ${modifier} modifier)`);
+
         const base_pool = attacker.attributes.agility + (attacker.skills['firearms'] || 0);
-        const range_modifier = get_range_modifier(weapon.type, distance);
+        const range_modifier = modifier;
         const recoil_modifier = calculate_recoil(attacker, weapon, fire_mode);
         const wound_modifier = calculate_wound_modifier(attacker);
         
@@ -210,7 +323,7 @@ function resolve_attack(attacker: CombatCharacter, defender: CombatCharacter, we
         
         let modifierBreakdown = `Base pool (${base_pool}) + Range modifier (${range_modifier}) + Recoil modifier (${recoil_modifier}) - Wound modifier (${wound_modifier}) + Situational modifiers (${attacker.situational_modifiers}) + Running target modifier (${running_target_modifier})`;
         
-        result.messages.push(`Ranged Attack: ${modifierBreakdown} = Total attack pool (${total_attack_pool})`);
+        result.messages.push(`Attack Pool: ${modifierBreakdown} = Total attack pool (${total_attack_pool})`);
 
         const attack_rolls = roll_d6(total_attack_pool);
         const { hits: attack_hits, ones: attack_ones, isGlitch, isCriticalGlitch } = count_hits_and_ones(attack_rolls);
@@ -368,7 +481,7 @@ function select_best_weapon(character: CombatCharacter, distance: number): Weapo
         if (weapon.type.toLowerCase() === 'melee' && distance <= 2) {
             return weapon; // Melee weapon in range
         } else if (weapon.type.toLowerCase() !== 'melee') {
-            const range_modifier = get_range_modifier(weapon.type, distance);
+            const range_modifier = get_range_modifier(weapon.weaponType, distance);
             if (range_modifier > best_modifier) {
                 best_modifier = range_modifier;
                 best_weapon = weapon;
