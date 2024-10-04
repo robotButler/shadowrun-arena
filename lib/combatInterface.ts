@@ -40,7 +40,7 @@ export const startNewCombat = (
 ): {
   combatCharacters: CombatCharacter[],
   initialInitiatives: Record<string, number>,
-  currentInitiativePhase: number,
+  currentInitiativeIndex: number,
   currentCharacterIndex: number,
   actionLog: { summary: string, details: string[] }[]
 } => {
@@ -90,7 +90,7 @@ export const startNewCombat = (
   return {
     combatCharacters: combatCharacters,
     initialInitiatives: initialInitiativeRolls,
-    currentInitiativePhase: combatCharacters[0].original_initiative,
+    currentInitiativeIndex: 0,
     currentCharacterIndex: 0,
     actionLog: [{ summary: "Combat Started", details: initiativeLog }]
   };

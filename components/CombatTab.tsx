@@ -55,7 +55,7 @@ export function CombatTab({
 
   const [isCombatActive, setIsCombatActive] = useState(false);
   const [combatCharacters, setCombatCharacters] = useState<CombatCharacter[]>([]);
-  const [currentInitiativePhase, setCurrentInitiativePhase] = useState(0);
+  const [currentInitiativeIndex, setCurrentInitiativeIndex] = useState(0);
   const [currentCharacterIndex, setCurrentCharacterIndex] = useState(0);
   const [selectedActionType, setSelectedActionType] = useState<ActionType | null>(null);
   const [selectedSimpleActions, setSelectedSimpleActions] = useState<(SimpleAction | null)[]>([null, null]);
@@ -191,7 +191,7 @@ export function CombatTab({
     console.log("--- Initiative order changed ---");
     console.log("New initiative order:", currentInitiativeOrder.map(io => `${io.char.name} (${io.phase})`));
     if (currentInitiativeOrder.length > 0) {
-      const currentChar = currentInitiativeOrder[0].char;
+      const currentChar = currentInitiativeOrder[currentInitiativeIndex % currentInitiativeOrder.length].char;
       console.log("Current character from initiative order:", currentChar.name);
       const newIndex = combatCharacters.findIndex(char => char.id === currentChar.id);
       console.log(`Setting current character index to ${newIndex}`);
@@ -211,7 +211,21 @@ export function CombatTab({
     const order: { char: CombatCharacter, phase: number }[] = [];
     characters.forEach(char => {
       if (char.is_conscious && char.is_alive) {
-        let remainingInitiative = char.current_initiative;
+        let remainingInitiative = char.total_initiative();
+        while (remainingInitiative > 0) {
+          order.push({ char, phase: remainingInitiative });
+          remainingInitiative -= 10;
+        }
+      }
+    });
+    return order.sort((a, b) => b.phase - a.phase);
+  };
+
+  const fullInitiativeOrder = (characters: CombatCharacter[]) => {
+    const order: { char: CombatCharacter, phase: number }[] = [];
+    characters.forEach(char => {
+      if (char.is_conscious && char.is_alive) {
+        let remainingInitiative = char.total_initiative();
         while (remainingInitiative > 0) {
           order.push({ char, phase: remainingInitiative });
           remainingInitiative -= 10;
@@ -254,7 +268,7 @@ export function CombatTab({
     const result = startNewCombat(faction1, faction2, characters, factionModifiers, gameMap, placedCharacters);
     setCombatCharacters(result.combatCharacters);
     setInitialInitiatives(result.initialInitiatives);
-    setCurrentInitiativePhase(result.currentInitiativePhase);
+    setCurrentInitiativeIndex(result.currentInitiativeIndex);
     setCurrentCharacterIndex(result.currentCharacterIndex);
     setActionLog(result.actionLog);
     clearInputs();
@@ -283,13 +297,13 @@ export function CombatTab({
     console.log("--- nextCharacter started ---");
     console.log("Current initiative order:", currentInitiativeOrder.map(io => `${io.char.name} (${io.phase})`));
     
-    setCurrentInitiativeOrder(prevOrder => {
-      const newOrder = [...prevOrder];
-      const removedChar = newOrder.shift();
-      console.log(`Removed character from initiative: ${removedChar?.char.name}`);
-      console.log("New initiative order:", newOrder.map(io => `${io.char.name} (${io.phase})`));
-      return newOrder;
-    });
+    // setCurrentInitiativeOrder(prevOrder => {
+    //   const newOrder = [...prevOrder];
+    //   const removedChar = newOrder.shift();
+    //   console.log(`Removed character from initiative: ${removedChar?.char.name}`);
+    //   console.log("New initiative order:", newOrder.map(io => `${io.char.name} (${io.phase})`));
+    //   return newOrder;
+    // });
 
     setCurrentCharacterIndex(0);
     console.log("Set current character index to 0");
@@ -534,6 +548,7 @@ export function CombatTab({
       endCombat();
       return;
     }
+    setCurrentInitiativeIndex((currentInitiativeIndex + 1) % currentInitiativeOrder.length);
     clearInputs();
     setRemainingMovement(0);
     nextCharacter();
@@ -599,6 +614,7 @@ export function CombatTab({
       // Recalculate the initiative order
       const newInitiativeOrder = calculateInitiativeOrder(result.updatedCharacters);
       setCurrentInitiativeOrder(newInitiativeOrder);
+    setCurrentInitiativeIndex((currentInitiativeIndex + 1) % currentInitiativeOrder.length);
 
       console.log("New initiative order:", newInitiativeOrder.map(io => `${io.char.name} (${io.phase})`));
 
@@ -1023,7 +1039,7 @@ export function CombatTab({
                     <CardContent>
                       <div className="grid grid-cols-[auto,auto,auto,1fr] gap-x-1 gap-y-1 text-sm">
                         {currentInitiativeOrder.map(({ char, phase }, index) => {
-                          const isActiveCharacter = index === 0;
+                          const isActiveCharacter = index === currentInitiativeIndex;
                           const hasWoundModifier = char.original_initiative !== char.total_initiative();
                           const woundModifier = char.original_initiative - char.current_initiative;
                           const textColor = isActiveCharacter 
