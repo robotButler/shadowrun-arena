@@ -98,7 +98,6 @@ export function CombatTab({
   const [initialInitiatives, setInitialInitiatives] = useState<Record<string, number>>({});
   const [remainingMovement, setRemainingMovement] = useState<number>(0);
   const [meleeRangeError, setMeleeRangeError] = useState<string | null>(null);
-  const [isRunning, setIsRunning] = useState(false);
   const [movementRemaining, setMovementRemaining] = useState(0);
   const [mapSize, setMapSize] = useState<Vector>({ x: 35, y: 35 });
   const [partialCoverProb, setPartialCoverProb] = useState(0.05);
@@ -116,11 +115,13 @@ export function CombatTab({
   const [deadCharacters, setDeadCharacters] = useState<string[]>([]);
   const [unconsciousCharacters, setUnconsciousCharacters] = useState<string[]>([]);
   const [sprintBonus, setSprintBonus] = useState<number | null>(null);
-  const [isSprinting, setIsSprinting] = useState(false);
   const [mostRecentLog, setMostRecentLog] = useState<{ summary: string, details: string[] } | null>(null);
   const [runModifier, setRunModifier] = useState(0);
   const [canUseTakeCover, setCanUseTakeCover] = useState(false);
   const [lastTwoActions, setLastTwoActions] = useState<{ summary: string, details: string[] }[]>([]);
+  const [runningCharacters, setRunningCharacters] = useState<Set<string>>(new Set());
+  const [sprintingCharacters, setSprintingCharacters] = useState<Set<string>>(new Set());
+  const [sprintBonuses, setSprintBonuses] = useState<Record<string, number>>({});
 
   console.log("CombatTab props:", { 
     characters, 
@@ -326,16 +327,24 @@ export function CombatTab({
     console.log("--- nextCharacter started ---");
     console.log("Current initiative order:", currentInitiativeOrder.map(io => `${io.char.name} (${io.phase})`));
     
-    // setCurrentInitiativeOrder(prevOrder => {
-    //   const newOrder = [...prevOrder];
-    //   const removedChar = newOrder.shift();
-    //   console.log(`Removed character from initiative: ${removedChar?.char.name}`);
-    //   console.log("New initiative order:", newOrder.map(io => `${io.char.name} (${io.phase})`));
-    //   return newOrder;
-    // });
+    const result = updateInitiative(combatCharacters, currentCharacterIndex, initialInitiatives);
+    setCombatCharacters(result.updatedCharacters);
+    setCurrentInitiativeIndex((prevIndex) => (prevIndex + 1) % currentInitiativeOrder.length);
+    setCurrentCharacterIndex(result.newCharacterIndex);
+    updateActionLog(result.actionLog);
+    
+    // Reset action selections
+    clearInputs();
+    
+    // Reset hasMovedWhileRunning for the new character
+    setHasMovedWhileRunning(false);
 
-    setCurrentCharacterIndex(0);
-    console.log("Set current character index to 0");
+    // Update remaining movement for the new character
+    setRemainingMovement(result.updatedCharacters[result.newCharacterIndex].movement_remaining);
+    setMaxMoveDistance(getMaxMoveDistance(result.updatedCharacters[result.newCharacterIndex]));
+
+    console.log("New current character index:", result.newCharacterIndex);
+    console.log("New current character:", result.updatedCharacters[result.newCharacterIndex].name);
     console.log("--- nextCharacter finished ---");
   };
 
@@ -533,6 +542,9 @@ export function CombatTab({
       return;
     }
 
+    const currentChar = combatCharacters[currentCharacterIndex];
+    const isRunning = runningCharacters.has(currentChar.id);
+
     const { updatedCharacters, actionLog, remainingDistance } = handleMovement(
       combatCharacters,
       currentCharacterIndex,
@@ -542,8 +554,9 @@ export function CombatTab({
     );
     setCombatCharacters(updatedCharacters);
     updateActionLog(actionLog);
-    setMovementRemaining(remainingDistance);
-    setIsRunning(false);
+    setRemainingMovement(remainingDistance);
+    setMaxMoveDistance(getMaxMoveDistance(updatedCharacters[currentCharacterIndex]));
+    setHasMovedWhileRunning(isRunning);
     setMovementDistance(0);
   };
 
@@ -565,22 +578,35 @@ export function CombatTab({
       selectedWeapons[0],
       selectedTargets[0],
       remainingMovement,
-      gameMap  // Add this parameter
+      gameMap
     );
     setCombatCharacters(updatedCharacters);
     updateActionLog(actionLog);
     
     // Recalculate initiative order after action
-    setCurrentInitiativeOrder(calculateInitiativeOrder(updatedCharacters));
+    const newInitiativeOrder = calculateInitiativeOrder(updatedCharacters);
+    setCurrentInitiativeOrder(newInitiativeOrder);
     
     if (combatEnded) {
       endCombat();
       return;
     }
-    setCurrentInitiativeIndex((currentInitiativeIndex + 1) % currentInitiativeOrder.length);
+
+    const newCurrentCharIndex = newInitiativeOrder[0] ? updatedCharacters.findIndex(char => char.id === newInitiativeOrder[0].char.id) : 0;
+    setCurrentCharacterIndex(newCurrentCharIndex);
+    setCurrentInitiativeIndex((currentInitiativeIndex + 1) % newInitiativeOrder.length);
+
+    // Update remaining movement for the new character
+    setRemainingMovement(updatedCharacters[newCurrentCharIndex].movement_remaining);
+    setMaxMoveDistance(getMaxMoveDistance(updatedCharacters[newCurrentCharIndex]));
+
+    // Reset Run button and other inputs
+    setRunningCharacters(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(currentChar.id);
+      return newSet;
+    });
     clearInputs();
-    setRemainingMovement(0);
-    nextCharacter();
   };
 
   const handleSimpleActionsHandler = () => {
@@ -604,6 +630,9 @@ export function CombatTab({
       return;
     }
 
+    const currentChar = combatCharacters[currentCharacterIndex];
+    const isCurrentlyRunning = runningCharacters.has(currentChar.id);
+
     console.log("Calling handleSimpleActions with:", {
       combatCharacters: combatCharacters.map(c => ({ id: c.id, name: c.name })),
       currentCharacterIndex,
@@ -611,7 +640,7 @@ export function CombatTab({
       selectedWeapons: selectedWeapons.filter((_, index) => selectedSimpleActions[index] !== null),
       selectedTargets: selectedTargets.filter((_, index) => selectedSimpleActions[index] !== null),
       remainingMovement,
-      isRunning,
+      isRunning: isCurrentlyRunning,
       gameMap: "Initialized"
     });
 
@@ -623,7 +652,7 @@ export function CombatTab({
         selectedWeapons.filter((_, index) => selectedSimpleActions[index] !== null),
         selectedTargets.filter((_, index) => selectedSimpleActions[index] !== null),
         remainingMovement,
-        isRunning,
+        isCurrentlyRunning,
         gameMap
       );
 
@@ -643,7 +672,7 @@ export function CombatTab({
       // Recalculate the initiative order
       const newInitiativeOrder = calculateInitiativeOrder(result.updatedCharacters);
       setCurrentInitiativeOrder(newInitiativeOrder);
-    setCurrentInitiativeIndex((currentInitiativeIndex + 1) % currentInitiativeOrder.length);
+      setCurrentInitiativeIndex((currentInitiativeIndex + 1) % currentInitiativeOrder.length);
 
       console.log("New initiative order:", newInitiativeOrder.map(io => `${io.char.name} (${io.phase})`));
 
@@ -654,7 +683,16 @@ export function CombatTab({
       console.log("New current character index:", newCurrentCharIndex);
       console.log("New current character:", result.updatedCharacters[newCurrentCharIndex].name);
 
-      // Clear inputs for the next turn
+      // Update remaining movement for the new character
+      setRemainingMovement(result.updatedCharacters[newCurrentCharIndex].movement_remaining);
+      setMaxMoveDistance(getMaxMoveDistance(result.updatedCharacters[newCurrentCharIndex]));
+
+      // Reset Run button and other inputs
+      setRunningCharacters(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(result.updatedCharacters[newCurrentCharIndex].id);
+        return newSet;
+      });
       clearInputs();
 
     } catch (error) {
@@ -682,34 +720,49 @@ export function CombatTab({
     setMovementDistance(0);
     setMovementDirection('Toward');
     setSelectedFreeAction(null);
+    // Don't reset isRunning here, as it's now handled in nextCharacter
   };
 
   const handleRunActionInComponent = () => {
-    if (isSprinting) {
+    const currentChar = combatCharacters[currentCharacterIndex];
+    const isCurrentlyRunning = runningCharacters.has(currentChar.id);
+    const isCurrentlySprinting = sprintingCharacters.has(currentChar.id);
+
+    if (isCurrentlySprinting) {
       return; // Do nothing if sprinting
     }
 
-    if (hasMovedWhileRunning) {
+    if (isCurrentlyRunning && hasMovedWhileRunning) {
       return; // Can't deselect after moving
     }
     
-    const { updatedCharacter, actionLog } = handleRunActionFromInterface(combatCharacters[currentCharacterIndex], isRunning);
+    const { updatedCharacter, actionLog } = handleRunActionFromInterface(currentChar, isCurrentlyRunning);
     
-    setIsRunning(!isRunning);
+    setRunningCharacters(prev => {
+      const newSet = new Set(prev);
+      if (isCurrentlyRunning) {
+        newSet.delete(currentChar.id);
+      } else {
+        newSet.add(currentChar.id);
+      }
+      return newSet;
+    });
+
     setCombatCharacters(prevChars => {
       const newChars = [...prevChars];
       newChars[currentCharacterIndex] = updatedCharacter;
       return newChars;
     });
     
-    // Remove the line setting runModifier as it doesn't exist on CombatCharacter
+    const newMaxMoveDistance = getMaxMoveDistance(updatedCharacter);
     setRemainingMovement(updatedCharacter.movement_remaining);
-    setMaxMoveDistance(updatedCharacter.movement_remaining);
+    setMaxMoveDistance(newMaxMoveDistance);
     updateActionLog(actionLog);
   };
 
   const getAvailableMovementDistances = () => {
     const currentChar = combatCharacters[currentCharacterIndex];
+    const isRunning = runningCharacters.has(currentChar.id);
     const maxDistance = currentChar.attributes.agility * (isRunning ? 4 : 2);
     const availableMovement = maxDistance - currentChar.movement_remaining;
     
@@ -778,7 +831,9 @@ export function CombatTab({
 
   const getMaxMoveDistance = (character: CombatCharacter) => {
     const baseDistance = character.attributes.agility * 2;
-    return isRunning ? baseDistance * 2 : baseDistance;
+    const runningMultiplier = runningCharacters.has(character.id) ? 2 : 1;
+    const characterSprintBonus = sprintingCharacters.has(character.id) ? (sprintBonuses[character.id] || 0) : 0;
+    return baseDistance * runningMultiplier + characterSprintBonus;
   };
 
   useEffect(() => {
@@ -786,7 +841,7 @@ export function CombatTab({
       const currentChar = combatCharacters[currentCharacterIndex];
       setMaxMoveDistance(getMaxMoveDistance(currentChar));
     }
-  }, [combatCharacters, currentCharacterIndex, isRunning]);
+  }, [combatCharacters, currentCharacterIndex, runningCharacters]);
 
   const handleMoveButtonClick = () => {
     if (remainingMovement <= 0) {
@@ -846,7 +901,7 @@ export function CombatTab({
     });
 
     // Set hasMovedWhileRunning to true if the character is running
-    if (isRunning) {
+    if (runningCharacters.has(currentChar.id)) {
       setHasMovedWhileRunning(true);
     }
   };
@@ -862,24 +917,49 @@ export function CombatTab({
   };
 
   const handleSprintAction = () => {
-    if (isSprinting) {
+    const currentChar = combatCharacters[currentCharacterIndex];
+    const isCurrentlySprinting = sprintingCharacters.has(currentChar.id);
+
+    if (isCurrentlySprinting) {
       // If already sprinting, cancel it
-      setIsSprinting(false);
-      setSprintBonus(null);
-      setRemainingMovement(prev => prev - (sprintBonus || 0));
-      setMaxMoveDistance(prev => prev - (sprintBonus || 0));
-      setIsRunning(false); // Also cancel running
+      setSprintingCharacters(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(currentChar.id);
+        return newSet;
+      });
+      setSprintBonuses(prev => {
+        const newBonuses = { ...prev };
+        delete newBonuses[currentChar.id];
+        return newBonuses;
+      });
+      setRemainingMovement(prev => prev - (sprintBonuses[currentChar.id] || 0));
+      setMaxMoveDistance(prev => prev - (sprintBonuses[currentChar.id] || 0));
+      setRunningCharacters(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(currentChar.id);
+        return newSet;
+      });
       updateActionLog({ 
-        summary: `${combatCharacters[currentCharacterIndex].name} stopped sprinting.`, 
-        details: [`Sprint bonus removed: -${sprintBonus} meters`] 
+        summary: `${currentChar.name} stopped sprinting.`, 
+        details: [`Sprint bonus removed: -${sprintBonuses[currentChar.id] || 0} meters`] 
       });
     } else {
       // Roll for sprint
-      const currentChar = combatCharacters[currentCharacterIndex];
       const { sprintDistance, sprintRoll, hits } = rollSprinting(currentChar);
-      setSprintBonus(sprintDistance);
-      setIsSprinting(true);
-      setIsRunning(true); // Automatically set running to true
+      setSprintBonuses(prev => ({
+        ...prev,
+        [currentChar.id]: sprintDistance
+      }));
+      setSprintingCharacters(prev => {
+        const newSet = new Set(prev);
+        newSet.add(currentChar.id);
+        return newSet;
+      });
+      setRunningCharacters(prev => {
+        const newSet = new Set(prev);
+        newSet.add(currentChar.id);
+        return newSet;
+      });
       setRemainingMovement(prev => prev + sprintDistance);
       setMaxMoveDistance(prev => prev + sprintDistance);
       updateActionLog({ 
@@ -1125,7 +1205,10 @@ export function CombatTab({
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-2">
-                      <p>Remaining: {remainingMovement} / {maxMoveDistance} meters {sprintBonus && `(+${sprintBonus} sprint)`}</p>
+                      <p>Remaining: {remainingMovement} / {maxMoveDistance} meters 
+                         {sprintBonuses[currentCharacter.id] && 
+                          `(+${sprintBonuses[currentCharacter.id]} sprint)`}
+                      </p>
                       <div className="flex space-x-2">
                         <Button 
                           onClick={handleMoveButtonClick}
@@ -1163,9 +1246,9 @@ export function CombatTab({
                         Change Fire Mode
                       </Button>
                       <Button
-                        variant={isRunning ? 'default' : 'outline'}
+                        variant={runningCharacters.has(currentCharacter.id) ? 'default' : 'outline'}
                         onClick={handleRunActionInComponent}
-                        disabled={isSprinting}
+                        disabled={sprintingCharacters.has(currentCharacter.id)}
                       >
                         <Play className="mr-2 h-4 w-4" /> Run
                       </Button>
@@ -1200,7 +1283,7 @@ export function CombatTab({
                         </div>
                       </div>
                     )}
-                    {isRunning && (
+                    {runningCharacters.has(currentCharacter.id) && (
                       <p className="mt-2">Character is running. Movement distance doubled for this turn. Run Modifier: {runModifier}</p>
                     )}
                   </CardContent>
@@ -1296,10 +1379,10 @@ export function CombatTab({
                             (selectedActionType === 'Simple' && action !== 'Sprint') ||
                             selectedSimpleActions.some(a => a !== null) ||
                             (action === 'MeleeAttack' && !hasMeleeWeapon) ||
-                            (action === 'Sprint' && isSprinting)
+                            (action === 'Sprint' && sprintingCharacters.has(currentCharacter.id))
                           }
                         >
-                          {action === 'Sprint' ? (isSprinting ? 'Cancel Sprint' : 'Sprint') : action}
+                          {action === 'Sprint' ? (sprintingCharacters.has(currentCharacter.id) ? 'Cancel Sprint' : 'Sprint') : action}
                         </Button>
                       ))}
                     </div>

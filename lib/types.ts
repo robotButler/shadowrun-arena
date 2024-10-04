@@ -72,6 +72,7 @@ export interface CombatCharacter extends Character {
   adjacentCoverCells: Vector[];
   hasMoved: boolean; // Add this new property
   isRunning: boolean; // Added as per the colleague's instructions
+  isSprinting: boolean; // Added as per the colleague's instructions
   // New methods
   updateStatus(): void;
   getStatusChanges(): string[];

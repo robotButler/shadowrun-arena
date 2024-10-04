@@ -1,16 +1,18 @@
 Tasks remaining:
 Combat:
+
 Small:
-- Fix wound calculation in initiative order - the total_initiative of a character should subtract their total wounds.
-- Attackers should get a -2 penalty to their attack rolls if the defending character is Running
-- The running and sprint conditions are not being reset when moving to the next character
-- Move the weapon stats card to above the Movement card
-- Fix the initiative phase arrow disappearing when moving to the next character
-- In the action log, list all the inputs to the initiative rolls
-- In the action log, dice rolls that are hits should be highlighted in green and 1s should be highlighted in red
-- When the Melee Attack complex action is selected, show buttons for any weapons and targets instead of dropdowns
+1. Fix wound calculation in initiative order - the total_initiative of a character should subtract their total wounds.
+2. Attackers should get a -2 penalty to their attack rolls if the defending character is Running
+3. Move the weapon stats card to above the Movement card
+4. Fix the initiative phase arrow disappearing when moving to the next character
+5. In the action log, list all the inputs to the initiative rolls
+6. In the action log, dice rolls that are hits should be highlighted in green and 1s should be highlighted in red
+7. When the Melee Attack complex action is selected, show buttons for any weapons and targets instead of dropdowns
+
 Medium:
 - Highlight cover cells adjacent to the current character if they are in a path to an opposing character
+
 Large:
 - Separate taking actions from ending the turn. 
   - Rename the Perform Action button to End Turn and make it always active.

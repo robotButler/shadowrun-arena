@@ -203,10 +203,13 @@ function resolve_attack(attacker: CombatCharacter, defender: CombatCharacter, we
         const reach_modifier = (weapon?.reach ?? 0) - 0;
         const wound_modifier = calculate_wound_modifier(attacker);
         
-        const modifiers = reach_modifier - wound_modifier + attacker.situational_modifiers;
+        // Add running target modifier
+        const running_target_modifier = defender.isRunning ? -2 : 0;
+        
+        const modifiers = reach_modifier - wound_modifier + attacker.situational_modifiers + running_target_modifier;
         const total_attack_pool = Math.max(base_pool + modifiers, 1);
         
-        let modifierBreakdown = `Base pool (${base_pool}) + Reach modifier (${reach_modifier}) - Wound modifier (${wound_modifier}) + Situational modifiers (${attacker.situational_modifiers})`;
+        let modifierBreakdown = `Base pool (${base_pool}) + Reach modifier (${reach_modifier}) - Wound modifier (${wound_modifier}) + Situational modifiers (${attacker.situational_modifiers}) + Running target modifier (${running_target_modifier})`;
         
         result.messages.push(`Melee Attack: ${modifierBreakdown} = Total attack pool (${total_attack_pool})`);
 

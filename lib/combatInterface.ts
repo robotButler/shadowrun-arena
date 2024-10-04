@@ -107,7 +107,10 @@ export const createCombatCharacter = (
   updateStatus: () => {},
   getStatusChanges: () => [],
   original_initiative: 0,
-  total_initiative: function() { return this.original_initiative - calculate_wound_modifier(this) },
+  total_initiative: function() { 
+    const woundModifier = Math.floor((this.physical_damage + this.stun_damage) / 3);
+    return this.original_initiative - woundModifier;
+  },
   position,
   current_initiative: 0,
   movement_remaining: 0,
@@ -171,9 +174,18 @@ export const updateInitiative = (
     // Reset initiative to initial value minus wound modifier
     currentChar.current_initiative = initialInitiatives[currentChar.id] - woundModifier;
     
-    // Reset movement
+    // Reset movement and running/sprinting status
     currentChar.movement_remaining = currentChar.attributes.agility * 2;
+    currentChar.isRunning = false;
+    currentChar.isSprinting = false;
   }
+
+  // Reset action selections for all characters
+  updatedCharacters.forEach(char => {
+    char.isRunning = false;
+    char.isSprinting = false;
+    // Reset any other action-related flags here
+  });
 
   // Find the character with the highest initiative
   let highestInitiative = -Infinity;
@@ -211,7 +223,8 @@ export const updateInitiative = (
       details: [
         `${currentChar.name}'s initiative decreased to ${currentChar.current_initiative}`,
         `Wound modifier applied: -${woundModifier}`,
-        `New initiative phase: ${newInitiativePhase}`
+        `New initiative phase: ${newInitiativePhase}`,
+        `All action selections reset for the next turn`
       ]
     }
   };
