@@ -36,6 +36,34 @@ import { MapDisplay } from './MapDisplay'
 import * as Tooltip from '@radix-ui/react-tooltip';
 import { rollSprinting, getSprintingDistance } from '@/lib/combatSimulation'
 
+const WeaponStatsCard = ({ character }: { character: CombatCharacter }) => (
+  <Card className="mt-4">
+    <CardHeader>
+      <CardTitle>{character.name}'s Weapons</CardTitle>
+    </CardHeader>
+    <CardContent>
+      <div className="grid grid-cols-6 gap-2 font-bold mb-2">
+        <div>Name</div>
+        <div>Type</div>
+        <div>Damage</div>
+        <div>AP</div>
+        <div>Fire Modes</div>
+        <div>Current Mode</div>
+      </div>
+      {character.weapons.map((weapon, index) => (
+        <div key={index} className="grid grid-cols-6 gap-2 mb-1">
+          <div>{weapon.name}</div>
+          <div>{weapon.type}</div>
+          <div>{weapon.damage}{weapon.damageType}</div>
+          <div>{weapon.ap}</div>
+          <div>{weapon.fireModes?.join(', ') || 'N/A'}</div>
+          <div>{weapon.currentFireMode || 'N/A'}</div>
+        </div>
+      ))}
+    </CardContent>
+  </Card>
+);
+
 export function CombatTab({
   characters,
   faction1,
@@ -92,6 +120,7 @@ export function CombatTab({
   const [mostRecentLog, setMostRecentLog] = useState<{ summary: string, details: string[] } | null>(null);
   const [runModifier, setRunModifier] = useState(0);
   const [canUseTakeCover, setCanUseTakeCover] = useState(false);
+  const [lastTwoActions, setLastTwoActions] = useState<{ summary: string, details: string[] }[]>([]);
 
   console.log("CombatTab props:", { 
     characters, 
@@ -847,8 +876,7 @@ export function CombatTab({
     } else {
       // Roll for sprint
       const currentChar = combatCharacters[currentCharacterIndex];
-      const sprintDistance = getSprintingDistance(currentChar);
-      const sprintRoll = rollSprinting(currentChar);
+      const { sprintDistance, sprintRoll, hits } = rollSprinting(currentChar);
       setSprintBonus(sprintDistance);
       setIsSprinting(true);
       setIsRunning(true); // Automatically set running to true
@@ -856,7 +884,10 @@ export function CombatTab({
       setMaxMoveDistance(prev => prev + sprintDistance);
       updateActionLog({ 
         summary: `${currentChar.name} started sprinting.`, 
-        details: [`Sprint roll: ${sprintRoll}`, `Movement increased by ${sprintDistance} meters`] 
+        details: [
+          `Sprint roll: ${sprintRoll.join(', ')} (${hits} hits)`,
+          `Movement increased by ${sprintDistance} meters`
+        ] 
       });
     }
   };
@@ -873,13 +904,13 @@ export function CombatTab({
     return null; // Not disabled
   };
 
+  // Update the updateActionLog function to add new logs to the beginning of the array
   const updateActionLog = (newLog: { summary: string, details?: string[] }) => {
     const logWithDetails = {
       ...newLog,
       details: newLog.details || []
     };
-    setActionLog(prev => [...prev, logWithDetails]);
-    setMostRecentLog(logWithDetails);
+    setActionLog(prev => [logWithDetails, ...prev]);
   };
 
   const initiativeOrder = currentInitiativeOrder;
@@ -1316,6 +1347,7 @@ export function CombatTab({
                   </CardContent>
                 </Card>
 
+                {/* Perform Action button */}
                 <Tooltip.Provider>
                   <Tooltip.Root>
                     <Tooltip.Trigger asChild>
@@ -1372,10 +1404,15 @@ export function CombatTab({
                     </Tooltip.Portal>
                   </Tooltip.Root>
                 </Tooltip.Provider>
+
+                {/* WeaponStatsCard */}
+                {combatCharacters.length > 0 && (
+                  <WeaponStatsCard character={combatCharacters[currentCharacterIndex]} />
+                )}
               </div>
               <div>
                 <h3 className="font-semibold mb-2">Combat Map</h3>
-                <div className="combat-map"> {/* Add this wrapper div with a class */}
+                <div className="combat-map">
                   <MapDisplay 
                     map={gameMap}
                     placedCharacters={placedCharacters}
@@ -1390,36 +1427,22 @@ export function CombatTab({
                     unconsciousCharacters={unconsciousCharacters}
                   />
                 </div>
-                {/* Add this section to display the most recent log entry */}
-                {mostRecentLog && (
-                  <div className="mt-4 p-2 bg-gray-100 rounded">
-                    <h4 className="font-semibold">Most Recent Action:</h4>
-                    <p>{mostRecentLog.summary}</p>
-                    {mostRecentLog.details && mostRecentLog.details.length > 0 && (
-                      <ul className="list-disc list-inside">
-                        {mostRecentLog.details.map((detail, index) => (
-                          <li key={index}>{detail}</li>
+                {actionLog.length > 0 && (
+                  <Card className="mt-4">
+                    <CardHeader>
+                      <CardTitle>Action Log (most recent first)</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <ScrollArea className="h-[1000px] w-full rounded-md border p-4">
+                        {actionLog.map((log, index) => (
+                          <ActionLogEntry key={index} summary={log.summary} details={log.details} />
                         ))}
-                      </ul>
-                    )}
-                  </div>
+                      </ScrollArea>
+                    </CardContent>
+                  </Card>
                 )}
               </div>
             </div>
-          </CardContent>
-        </Card>
-      )}
-      {actionLog.length > 0 && (
-        <Card className="mt-4">
-          <CardHeader>
-            <CardTitle>Action Log</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ScrollArea className="h-[600px] w-full rounded-md border p-4">
-              {actionLog.map((log, index) => (
-                <ActionLogEntry key={index} summary={log.summary} details={log.details} />
-              ))}
-            </ScrollArea>
           </CardContent>
         </Card>
       )}

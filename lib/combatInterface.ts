@@ -165,7 +165,7 @@ export const updateInitiative = (
   const woundModifier = calculate_wound_modifier(currentChar);
   
   // Decrease initiative by 10, considering wound modifier
-  currentChar.current_initiative -= (10 + woundModifier);
+  currentChar.current_initiative -= 10;
 
   if (currentChar.current_initiative <= 0) {
     // Reset initiative to initial value minus wound modifier

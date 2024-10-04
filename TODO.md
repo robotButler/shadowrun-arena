@@ -1,7 +1,13 @@
 Tasks remaining:
-- Show last two actions on the combat log
-- Fix sprint distance calculation
 - Fix wound calculation in initiative order
 - Fix attackers targetting running defenders don't get -2 dice pool penalty for their attack roll
-- Add card to display all weapons for the active character and their stats and current fire mode
-- 
+- The running and sprint conditions are not being reset when moving to the next character
+- Highlight cover cells adjacent to the current character if they are in a path to an opposing character
+- Move the weapon stats card to above the Movement card
+- Fix the initiative phase arrow disappearing when moving to the next character
+- Implement range penalties for ranged weapons
+- If a character has a ranged weapon, show a line from their position to all opposing characters in range
+  - The line should be a different color based on the weapon's range modifier
+  - The line should be gray if it intersects any Full Cover cells
+  - When a player selects FireRangedWeapon, the targets should be limited by whether the line to them intersects any Full Cover cells
+  - If the character has no legitimate ranged targets, the FireRangedWeapon action should be disabled

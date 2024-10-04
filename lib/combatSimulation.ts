@@ -17,17 +17,20 @@ function calculateRunningDistance(character: CombatCharacter): number {
 }
 
 export function getSprintingDistance(character: CombatCharacter): number {
-  const hits = rollSprinting(character);
-  return calculateSprintingDistance(character, hits);
+  const { sprintDistance } = rollSprinting(character);
+  return sprintDistance;
 }
 
-export function rollSprinting(character: CombatCharacter): number {
+export const rollSprinting = (character: CombatCharacter): { sprintDistance: number, sprintRoll: number[], hits: number } => {
   const runningSkill = character.skills.running || 0;
-  const sprintPool = runningSkill + character.attributes.strength;
-  const rolls = Array(sprintPool).fill(0).map(() => Math.floor(Math.random() * 6) + 1);
-  const hits = rolls.filter(roll => roll >= 5).length;
-  return hits;
-}
+  const agilityDice = character.attributes.agility;
+  const sprintRoll = Array(runningSkill + agilityDice).fill(0).map(() => Math.floor(Math.random() * 6) + 1);
+  const hits = sprintRoll.filter(roll => roll >= 5).length;
+  const extraDistance = ['Dwarf', 'Troll'].includes(character.metatype) ? hits : hits * 2;
+  const sprintDistance = extraDistance;
+  
+  return { sprintDistance, sprintRoll, hits };
+};
 
 function calculateSprintingDistance(character: CombatCharacter, sprintHits: number): number {
   return sprintHits * (character.metatype === 'Dwarf' || character.metatype === 'Troll' ? 1 : 2);
@@ -35,15 +38,21 @@ function calculateSprintingDistance(character: CombatCharacter, sprintHits: numb
 
 export const createCombatCharacter = (character: Character, faction: 'faction1' | 'faction2', position: number, factionModifiers: Record<string, number>): CombatCharacter => {
   const managedCharacter = new ManagedCharacter(character, faction, { x: position, y: 0 });
-  const { initiative_total } = roll_initiative(managedCharacter);
-  managedCharacter.original_initiative = initiative_total;
-  managedCharacter.current_initiative = initiative_total;
-  managedCharacter.situational_modifiers = factionModifiers[character.id] || 0;
-  managedCharacter.movement_remaining = calculateRunningDistance(managedCharacter);
-  return managedCharacter;
+  const { initiative_total } = roll_initiative(managedCharacter as CombatCharacter);
+  return {
+    ...managedCharacter,
+    original_initiative: initiative_total,
+    current_initiative: initiative_total,
+    situational_modifiers: factionModifiers[character.id] || 0,
+    movement_remaining: calculateRunningDistance(managedCharacter as CombatCharacter),
+    isTakingCover: false,
+    adjacentCoverCells: [],
+    hasMoved: false,
+    isRunning: false,
+  } as CombatCharacter;
 }
 
-export const simulateRound = (characters: CombatCharacter[]): RoundResult => {
+export const simulateRound = (characters: CombatCharacter[], gameMap: GameMap): RoundResult => {
   const roundResult: RoundResult = {
     actingCharacter: '',
     initiativePhase: 0,
@@ -88,7 +97,10 @@ export const simulateRound = (characters: CombatCharacter[]): RoundResult => {
       // Move towards target
       const moveDistance = Math.min(character.movement_remaining, distance - maxRange);
       const direction = character.position < target.position ? 1 : -1;
-      character.position += moveDistance * direction;
+      character.position = {
+        x: character.position.x + moveDistance * (character.position.x < target.position.x ? 1 : -1),
+        y: character.position.y + moveDistance * (character.position.y < target.position.y ? 1 : -1)
+      };
       character.movement_remaining -= moveDistance;
       distance = calculateDistance(character.position, target.position); // Recalculate distance after movement
       roundResult.messages.push(`${character.name} moved ${moveDistance} meters towards ${target.name}. New distance: ${distance} meters.`);
@@ -96,7 +108,7 @@ export const simulateRound = (characters: CombatCharacter[]): RoundResult => {
 
     // Perform attack if in range
     if (distance <= maxRange) {
-      const attackResult = resolve_attack(character, target, weapon, weapon.currentFireMode || 'SA', distance)
+      const attackResult = resolve_attack(character, target, weapon, weapon.currentFireMode || 'SA', distance, gameMap)
       roundResult.messages.push(...attackResult.messages)
       roundResult.damage_dealt += attackResult.damage_dealt
       roundResult.attack_rolls = attackResult.attack_rolls

@@ -202,10 +202,13 @@ function resolve_attack(attacker: CombatCharacter, defender: CombatCharacter, we
         const recoil_modifier = calculate_recoil(attacker, weapon, fire_mode);
         const wound_modifier = calculate_wound_modifier(attacker);
         
-        const modifiers = range_modifier + recoil_modifier - wound_modifier + attacker.situational_modifiers;
+        // Add running target modifier
+        const running_target_modifier = defender.isRunning ? -2 : 0;
+        
+        const modifiers = range_modifier + recoil_modifier - wound_modifier + attacker.situational_modifiers + running_target_modifier;
         const total_attack_pool = Math.max(base_pool + modifiers, 1);
         
-        let modifierBreakdown = `Base pool (${base_pool}) + Range modifier (${range_modifier}) + Recoil modifier (${recoil_modifier}) - Wound modifier (${wound_modifier}) + Situational modifiers (${attacker.situational_modifiers})`;
+        let modifierBreakdown = `Base pool (${base_pool}) + Range modifier (${range_modifier}) + Recoil modifier (${recoil_modifier}) - Wound modifier (${wound_modifier}) + Situational modifiers (${attacker.situational_modifiers}) + Running target modifier (${running_target_modifier})`;
         
         result.messages.push(`Ranged Attack: ${modifierBreakdown} = Total attack pool (${total_attack_pool})`);
 

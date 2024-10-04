@@ -70,7 +70,7 @@ export interface CombatCharacter extends Character {
   isTakingCover: boolean;
   adjacentCoverCells: Vector[];
   hasMoved: boolean; // Add this new property
-  
+  isRunning: boolean; // Added as per the colleague's instructions
   // New methods
   updateStatus(): void;
   getStatusChanges(): string[];
