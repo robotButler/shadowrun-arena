@@ -695,6 +695,11 @@ export function CombatTab({
       });
       clearInputs();
 
+      if (result.combatEnded) {
+        endCombat();
+        return;
+      }
+
     } catch (error) {
       console.error("Error in handleSimpleActions:", error);
     }
@@ -1045,7 +1050,7 @@ export function CombatTab({
         <CardFooter>
           <Button 
             onClick={handleNewCombatClick} 
-            disabled={faction1.length === 0 || faction2.length === 0 || isCombatActive}
+            disabled={faction1.length === 0 || faction2.length === 0 || (isCombatActive && !combatEnded)}
           >
             <Swords className="mr-2 h-4 w-4" /> New Combat
           </Button>
@@ -1199,6 +1204,11 @@ export function CombatTab({
                     </CardContent>
                   </Card>
                 </div>
+
+                {/* Move WeaponStatsCard here, above the Movement card */}
+                {combatCharacters.length > 0 && (
+                  <WeaponStatsCard character={combatCharacters[currentCharacterIndex]} />
+                )}
 
                 <Card>
                   <CardHeader>
@@ -1488,11 +1498,6 @@ export function CombatTab({
                     </Tooltip.Portal>
                   </Tooltip.Root>
                 </Tooltip.Provider>
-
-                {/* WeaponStatsCard */}
-                {combatCharacters.length > 0 && (
-                  <WeaponStatsCard character={combatCharacters[currentCharacterIndex]} />
-                )}
               </div>
               <div>
                 <h3 className="font-semibold mb-2">Combat Map</h3>

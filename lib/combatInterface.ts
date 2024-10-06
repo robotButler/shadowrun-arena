@@ -82,7 +82,14 @@ export const startNewCombat = (
     char.current_initiative = initiative_total;
     initialInitiativeRolls[char.id] = initiative_total;
 
-    initiativeLog.push(`${char.name}: ${initiative_total} (Dice: ${initiative_rolls.join(', ')})`);
+    const initiativeBase = char.attributes.reaction + char.attributes.intuition;
+    initiativeLog.push(JSON.stringify({
+      name: char.name,
+      total: initiative_total,
+      base: initiativeBase,
+      dice: initiative_rolls,
+      initiativeDice: char.initiativeDice
+    }));
   });
 
   combatCharacters.sort((a, b) => b.original_initiative - a.original_initiative);

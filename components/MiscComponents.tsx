@@ -7,14 +7,68 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { ChevronDown, ChevronUp } from 'lucide-react'
 import { ActionLogEntryProps, SimulationResultProps, FactionSelectorProps, Character, MatchResult } from '../lib/types'
 
-export const ActionLogEntry: React.FC<{ summary: string; details: string[] }> = ({ summary, details }) => (
-  <div className="mb-4">
-    <p className="font-semibold">{summary}</p>
-    {details.map((detail, index) => (
-      <p key={index} className="ml-4">{detail}</p>
-    ))}
-  </div>
-);
+export function ActionLogEntry({ summary, details }: ActionLogEntryProps) {
+  const highlightDice = (diceRoll: string) => {
+    return diceRoll.split(', ').map((die, index) => {
+      const value = parseInt(die);
+      let className = '';
+      if (value >= 5) {
+        className = 'text-green-600 font-bold';
+      } else if (value === 1) {
+        className = 'text-red-600 font-bold';
+      }
+      return (
+        <span key={index} className={className}>
+          {die}
+          {index < diceRoll.split(', ').length - 1 ? ', ' : ''}
+        </span>
+      );
+    });
+  };
+
+  return (
+    <div className="mb-4">
+      <h4 className="font-bold">{summary}</h4>
+      {details.map((detail, index) => {
+        if (detail === "Initial Initiative Rolls:") {
+          return (
+            <div key={index} className="ml-4 font-semibold">
+              {detail}
+            </div>
+          );
+        } else {
+          try {
+            const rollData = JSON.parse(detail);
+            return (
+              <div key={index} className="ml-4 flex flex-wrap items-baseline">
+                <span className="font-semibold mr-2">{rollData.name}:</span>
+                <span className="mr-2">{rollData.total}</span>
+                <span className="text-sm text-gray-600">
+                  (Base: {rollData.base}, Dice: {highlightDice(rollData.dice.join(', '))}, Initiative Dice: {rollData.initiativeDice})
+                </span>
+              </div>
+            );
+          } catch (e) {
+            // If it's not JSON, check if it contains dice rolls
+            if (detail.includes("Dice:")) {
+              const [beforeDice, afterDice] = detail.split("Dice:");
+              const [diceRoll, ...rest] = afterDice.split(")");
+              return (
+                <p key={index} className="ml-4 break-words">
+                  {beforeDice}Dice: {highlightDice(diceRoll.trim())}
+                  ){rest.join(")")}
+                </p>
+              );
+            } else {
+              // If no dice rolls, display as regular text
+              return <p key={index} className="ml-4 break-words">{detail}</p>;
+            }
+          }
+        }
+      })}
+    </div>
+  );
+}
 
 export const SimulationResult = ({ result, index }: SimulationResultProps) => {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -69,7 +123,7 @@ export const FactionSelector = ({
 }: FactionSelectorProps) => (
   <div>
     <h3 className="mb-2 font-semibold">Faction {faction === 'faction1' ? '1' : '2'}</h3>
-    <ScrollArea className="h-[200px] w-full rounded-md border p-4">
+    <ScrollArea className="h-[300px] w-full rounded-md border p-4">
       {characters.map(character => (
         <div 
           key={character.id} 
