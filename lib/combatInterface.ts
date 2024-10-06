@@ -127,6 +127,7 @@ export const createCombatCharacter = (
   isTakingCover: false,
   adjacentCoverCells: [],
   hasMoved: false,
+  isRunning: false,
   calculate_wound_modifier: function() {
     return calculate_wound_modifier(this);
   },
@@ -165,14 +166,14 @@ export const updateInitiative = (
   let currentChar = updatedCharacters[currentCharacterIndex];
   
   // Calculate wound modifier
-  const woundModifier = calculate_wound_modifier(currentChar);
+  const woundModifier = Math.floor((currentChar.physical_damage + currentChar.stun_damage) / 3);
   
   // Decrease initiative by 10, considering wound modifier
-  currentChar.current_initiative -= 10;
+  currentChar.current_initiative = Math.max(0, currentChar.current_initiative - 10);
 
   if (currentChar.current_initiative <= 0) {
     // Reset initiative to initial value minus wound modifier
-    currentChar.current_initiative = initialInitiatives[currentChar.id] - woundModifier;
+    currentChar.current_initiative = Math.max(0, initialInitiatives[currentChar.id] - woundModifier);
     
     // Reset movement and running/sprinting status
     currentChar.movement_remaining = currentChar.attributes.agility * 2;
@@ -597,6 +598,7 @@ export const handleRunAction = (character: CombatCharacter, isCurrentlyRunning: 
   if (!isCurrentlyRunning) {
     // Start running
     updatedCharacter.movement_remaining *= 2;
+    updatedCharacter.isRunning = true;
     return {
       updatedCharacter,
       actionLog: {
@@ -610,6 +612,7 @@ export const handleRunAction = (character: CombatCharacter, isCurrentlyRunning: 
   } else {
     // Stop running
     updatedCharacter.movement_remaining = Math.floor(updatedCharacter.movement_remaining / 2);
+    updatedCharacter.isRunning = false;
     return {
       updatedCharacter,
       actionLog: {

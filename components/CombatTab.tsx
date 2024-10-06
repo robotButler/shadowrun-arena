@@ -603,7 +603,7 @@ export function CombatTab({
     // Reset Run button and other inputs
     setRunningCharacters(prev => {
       const newSet = new Set(prev);
-      newSet.delete(currentChar.id);
+      newSet.delete(updatedCharacters[currentCharacterIndex].id);  // Use currentCharacterIndex here
       return newSet;
     });
     clearInputs();
@@ -672,7 +672,7 @@ export function CombatTab({
       // Recalculate the initiative order
       const newInitiativeOrder = calculateInitiativeOrder(result.updatedCharacters);
       setCurrentInitiativeOrder(newInitiativeOrder);
-      setCurrentInitiativeIndex((currentInitiativeIndex + 1) % currentInitiativeOrder.length);
+      setCurrentInitiativeIndex((currentInitiativeIndex + 1) % newInitiativeOrder.length);
 
       console.log("New initiative order:", newInitiativeOrder.map(io => `${io.char.name} (${io.phase})`));
 
@@ -993,7 +993,25 @@ export function CombatTab({
     setActionLog(prev => [logWithDetails, ...prev]);
   };
 
-  const initiativeOrder = currentInitiativeOrder;
+  // Update the initiative order display in the CombatTab component
+  const initiativeOrder = currentInitiativeOrder.map(({ char, phase }, index) => {
+    const isActiveCharacter = index === currentInitiativeIndex;
+    const totalInitiative = char.total_initiative();
+    const woundModifier = char.original_initiative - totalInitiative;
+    const textColor = isActiveCharacter 
+      ? (char.faction === 'faction1' ? 'text-blue-600' : 'text-red-600')
+      : 'text-black';
+    return (
+      <React.Fragment key={`${char.id}-${phase}`}>
+        <div className="w-4 text-center text-black">{isActiveCharacter ? "➤" : ""}</div>
+        <div className={`${isActiveCharacter ? "font-bold" : ""} truncate ${textColor}`}>{char.name}</div>
+        <div className="text-right whitespace-nowrap px-1 text-black">
+          {woundModifier > 0 && `${char.original_initiative} - ${woundModifier} wound =`}
+        </div>
+        <div className="w-8 text-right text-black">{totalInitiative}</div>
+      </React.Fragment>
+    );
+  });
 
   return (
     <>
@@ -1149,24 +1167,7 @@ export function CombatTab({
                     </CardHeader>
                     <CardContent>
                       <div className="grid grid-cols-[auto,auto,auto,1fr] gap-x-1 gap-y-1 text-sm">
-                        {currentInitiativeOrder.map(({ char, phase }, index) => {
-                          const isActiveCharacter = index === currentInitiativeIndex;
-                          const hasWoundModifier = char.original_initiative !== char.total_initiative();
-                          const woundModifier = char.original_initiative - char.current_initiative;
-                          const textColor = isActiveCharacter 
-                            ? (char.faction === 'faction1' ? 'text-blue-600' : 'text-red-600')
-                            : 'text-black';
-                          return (
-                            <React.Fragment key={`${char.id}-${phase}`}>
-                              <div className="w-4 text-center text-black">{isActiveCharacter ? "➤" : ""}</div>
-                              <div className={`${isActiveCharacter ? "font-bold" : ""} truncate ${textColor}`}>{char.name}</div>
-                              <div className="text-right whitespace-nowrap px-1 text-black">
-                                {hasWoundModifier && `${char.original_initiative} - ${woundModifier} wound =`}
-                              </div>
-                              <div className="w-8 text-right text-black">{phase}</div>
-                            </React.Fragment>
-                          );
-                        })}
+                        {initiativeOrder}
                       </div>
                     </CardContent>
                   </Card>

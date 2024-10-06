@@ -2,13 +2,14 @@ Tasks remaining:
 Combat:
 
 Small:
-1. Fix wound calculation in initiative order - the total_initiative of a character should subtract their total wounds.
 2. Attackers should get a -2 penalty to their attack rolls if the defending character is Running
 3. Move the weapon stats card to above the Movement card
-4. Fix the initiative phase arrow disappearing when moving to the next character
+4. The New Combat button should be enabled when the combat is over, sometimes it's not.
 5. In the action log, list all the inputs to the initiative rolls
 6. In the action log, dice rolls that are hits should be highlighted in green and 1s should be highlighted in red
 7. When the Melee Attack complex action is selected, show buttons for any weapons and targets instead of dropdowns
+8. When a character has been killed, display a red X over their map icon. If they are unconscious, use a gray X.
+9. The complex actions, Fire Weapon should be desactivated when the character has no ranged weapons.
 
 Medium:
 - Highlight cover cells adjacent to the current character if they are in a path to an opposing character
