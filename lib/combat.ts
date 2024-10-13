@@ -459,7 +459,7 @@ function apply_damage(character: CombatCharacter, damage: number, damage_type: s
     }
 
     // Check if character dies from physical damage
-    if (character.physical_damage > maxPhysicalHealth) {
+    if (character.physical_damage >= maxPhysicalHealth) {
         character.is_alive = false;
         character.is_conscious = false;
     } else {
