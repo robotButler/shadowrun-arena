@@ -2,7 +2,6 @@ Tasks remaining:
 Combat:
 
 Small:
-10. When combat has ended, disable all movement and action buttons.
 11. +2 bonus to melee attacks when running is not being applied. -2 penalty to all other actions when running is not being applied
 12. Characters should not be able to run multiple times before the initiative phase resets
 

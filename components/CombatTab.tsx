@@ -122,6 +122,11 @@ export function CombatTab({
   const [sprintingCharacters, setSprintingCharacters] = useState<Set<string>>(new Set());
   const [sprintBonuses, setSprintBonuses] = useState<Record<string, number>>({});
 
+  // Add this function near the top of your component, after the state declarations
+  const isActionDisabled = () => {
+    return combatEnded || !isCombatActive;
+  };
+
   useEffect(() => {
     if (faction1.length > 0 || faction2.length > 0) {
       generateNewMap();
@@ -1094,7 +1099,7 @@ export function CombatTab({
                       <div className="flex space-x-2">
                         <Button 
                           onClick={handleMoveButtonClick}
-                          disabled={isSelectingMoveTarget || remainingMovement <= 0}
+                          disabled={isActionDisabled() || isSelectingMoveTarget || remainingMovement <= 0}
                           className="bg-yellow-500 hover:bg-yellow-600 text-white"
                         >
                           {isSelectingMoveTarget ? 'Selecting Move Target...' : 'Select Move Target'}
@@ -1116,21 +1121,21 @@ export function CombatTab({
                       <Button
                         variant={selectedFreeAction === 'CallShot' ? 'default' : 'outline'}
                         onClick={() => handleFreeActionSelection('CallShot')}
-                        disabled={!hasRangedWeapon}
+                        disabled={isActionDisabled() || !hasRangedWeapon}
                       >
                         Call Shot
                       </Button>
                       <Button
                         variant={selectedFreeAction === 'ChangeFireMode' ? 'default' : 'outline'}
                         onClick={() => handleFreeActionSelection('ChangeFireMode')}
-                        disabled={!hasRangedWeapon}
+                        disabled={isActionDisabled() || !hasRangedWeapon}
                       >
                         Change Fire Mode
                       </Button>
                       <Button
                         variant={runningCharacters.has(currentCharacter.id) ? 'default' : 'outline'}
                         onClick={handleRunActionInComponent}
-                        disabled={sprintingCharacters.has(currentCharacter.id)}
+                        disabled={isActionDisabled() || sprintingCharacters.has(currentCharacter.id)}
                       >
                         <Play className="mr-2 h-4 w-4" /> Run
                       </Button>
@@ -1191,6 +1196,7 @@ export function CombatTab({
                                   onClick={() => handleSimpleActionSelection(action as SimpleAction, index)}
                                   className="w-full"
                                   disabled={
+                                    isActionDisabled() ||
                                     selectedActionType === 'Complex' ||
                                     (!hasRangedWeapon && ['CallShot', 'ChangeFireMode', 'FireRangedWeapon', 'ReloadWeapon', 'TakeAim'].includes(action))
                                   }
@@ -1258,6 +1264,7 @@ export function CombatTab({
                           onClick={() => handleComplexActionSelection(action as ComplexAction)}
                           className={`w-full ${action === 'Sprint' ? 'bg-yellow-500 hover:bg-yellow-600 text-white' : ''}`}
                           disabled={
+                            isActionDisabled() ||
                             (selectedActionType === 'Simple' && action !== 'Sprint') ||
                             selectedSimpleActions.some(a => a !== null) ||
                             (action === 'MeleeAttack' && (!hasMeleeWeapon || !hasMeleeTargetsInRange())) ||
@@ -1344,7 +1351,7 @@ export function CombatTab({
                             }
                           }}
                           className="w-full bg-green-500 hover:bg-green-600 text-white"
-                          disabled={!!isPerformActionDisabled()}
+                          disabled={isActionDisabled() || !!isPerformActionDisabled()}
                         >
                           Perform Action
                         </Button>
