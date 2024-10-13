@@ -294,6 +294,16 @@ export function CombatTab({
   const hasMeleeWeapon = currentCharacter?.weapons.some(w => w.type === 'Melee');
   const hasRangedWeapon = currentCharacter?.weapons.some(w => w.type === 'Ranged');
 
+  // Add this function to check if there are melee targets in range
+  const hasMeleeTargetsInRange = () => {
+    const currentChar = combatCharacters[currentCharacterIndex];
+    return combatCharacters.some(c => 
+      c.faction !== currentChar.faction && 
+      c.is_conscious &&
+      calculateDistance(currentChar.position, c.position) <= 2
+    );
+  };
+
   const handleSimpleActionSelection = (action: SimpleAction, index: number) => {
     if (!hasRangedWeapon && ['CallShot', 'ChangeFireMode', 'FireRangedWeapon', 'ReloadWeapon', 'TakeAim'].includes(action)) {
       return; // Do nothing if the character doesn't have a ranged weapon
@@ -821,7 +831,7 @@ export function CombatTab({
       updateActionLog({ 
         summary: `${currentChar.name} started sprinting.`, 
         details: [
-          `Sprint roll: ${sprintRoll.join(', ')} (${hits} hits)`,
+          `Sprint roll: <dice>${sprintRoll.join(', ')}</dice> (${hits} hits)`,
           `Movement increased by ${sprintDistance} meters`
         ] 
       });
@@ -868,6 +878,16 @@ export function CombatTab({
       </React.Fragment>
     );
   });
+
+  // Add this function to get melee targets in range
+  const getMeleeTargetsInRange = () => {
+    const currentChar = combatCharacters[currentCharacterIndex];
+    return combatCharacters.filter(c => 
+      c.faction !== currentChar.faction && 
+      c.is_conscious &&
+      calculateDistance(currentChar.position, c.position) <= 2
+    );
+  };
 
   return (
     <>
@@ -1240,7 +1260,8 @@ export function CombatTab({
                           disabled={
                             (selectedActionType === 'Simple' && action !== 'Sprint') ||
                             selectedSimpleActions.some(a => a !== null) ||
-                            (action === 'MeleeAttack' && !hasMeleeWeapon) ||
+                            (action === 'MeleeAttack' && (!hasMeleeWeapon || !hasMeleeTargetsInRange())) ||
+                            (action === 'FireWeapon' && !hasRangedWeapon) ||
                             (action === 'Sprint' && sprintingCharacters.has(currentCharacter.id))
                           }
                         >
@@ -1253,38 +1274,39 @@ export function CombatTab({
                         {/* Weapon and target selection for complex actions */}
                         {(selectedComplexAction === 'FireWeapon' || selectedComplexAction === 'MeleeAttack') && (
                           <>
-                            <Select 
-                              value={selectedWeapons[0] ? JSON.stringify(selectedWeapons[0]) : ''}
-                              onValueChange={(value) => handleWeaponSelection(JSON.parse(value), 0)}
-                            >
-                              <SelectTrigger className="mt-2">
-                                <SelectValue placeholder="Select Weapon" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {combatCharacters[currentCharacterIndex].weapons
-                                  .filter(w => selectedComplexAction === 'FireWeapon' ? w.type === 'Ranged' : w.type === 'Melee')
-                                  .map((weapon, i) => (
-                                    <SelectItem key={i} value={JSON.stringify(weapon)}>{weapon.name}</SelectItem>
-                                  ))
-                                }
-                              </SelectContent>
-                            </Select>
-                            <Select 
-                              value={selectedTargets[0] || ''}
-                              onValueChange={(value) => handleTargetSelection(value, 0)}
-                            >
-                              <SelectTrigger className="mt-2">
-                                <SelectValue placeholder="Select Target" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {combatCharacters
-                                  .filter(c => c.faction !== combatCharacters[currentCharacterIndex].faction && c.is_conscious)
-                                  .map((target) => (
-                                    <SelectItem key={target.id} value={target.id}>{target.name}</SelectItem>
-                                  ))
-                                }
-                              </SelectContent>
-                            </Select>
+                            <div className="grid grid-cols-2 gap-2 mt-2">
+                              {combatCharacters[currentCharacterIndex].weapons
+                                .filter(w => selectedComplexAction === 'FireWeapon' ? w.type === 'Ranged' : w.type === 'Melee')
+                                .map((weapon, i) => (
+                                  <Button
+                                    key={i}
+                                    variant={selectedWeapons[0] === weapon ? 'default' : 'outline'}
+                                    onClick={() => handleWeaponSelection(weapon, 0)}
+                                    className="w-full"
+                                  >
+                                    {weapon.name}
+                                  </Button>
+                                ))
+                              }
+                            </div>
+                            <div className="grid grid-cols-2 gap-2 mt-2">
+                              {(selectedComplexAction === 'FireWeapon' 
+                                ? combatCharacters.filter(c => c.faction !== combatCharacters[currentCharacterIndex].faction && c.is_conscious)
+                                : getMeleeTargetsInRange()
+                              ).map((target) => (
+                                <Button
+                                  key={target.id}
+                                  variant={selectedTargets[0] === target.id ? 'default' : 'outline'}
+                                  onClick={() => handleTargetSelection(target.id, 0)}
+                                  className="w-full"
+                                >
+                                  {target.name}
+                                </Button>
+                              ))}
+                            </div>
+                            {selectedComplexAction === 'MeleeAttack' && getMeleeTargetsInRange().length === 0 && (
+                              <p className="text-red-500 mt-2">No targets within melee range.</p>
+                            )}
                           </>
                         )}
                       </div>
