@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { GameMap, CellType } from '../lib/map';
 import { Character, Vector, CombatCharacter } from '../lib/types';
-import { Bed, BrickWall, Ghost } from 'lucide-react';
+import { Bed, BrickWall, Ghost, X } from 'lucide-react';
 import * as PF from 'pathfinding';
-import { roundVector } from '../lib/utils'; // Add this import
+import { roundVector } from '../lib/utils';
 
 interface MapDisplayProps {
   map: GameMap;
@@ -14,7 +14,7 @@ interface MapDisplayProps {
   isSelectingMoveTarget?: boolean;
   faction1: string[];
   faction2: string[];
-  placingCharacter: Character | null; // Add this prop
+  placingCharacter: Character | null;
   deadCharacters: string[];
   unconsciousCharacters: string[];
 }
@@ -28,7 +28,7 @@ export function MapDisplay({
   isSelectingMoveTarget,
   faction1 = [],
   faction2 = [],
-  placingCharacter, // Add this prop
+  placingCharacter,
   deadCharacters,
   unconsciousCharacters
 }: MapDisplayProps) {
@@ -191,6 +191,7 @@ export function MapDisplay({
         const position = { x, y };
         const characterInitial = getCharacterInitial(position);
         const isHovered = hoveredCell && hoveredCell.x === x && hoveredCell.y === y;
+        const placedCharacter = placedCharacters.find(pc => pc.position.x === x && pc.position.y === y);
 
         return (
           <g 
@@ -222,19 +223,38 @@ export function MapDisplay({
               </foreignObject>
             )}
             {characterInitial && (
-              <text
-                x={x * cellSize + cellSize / 2}
-                y={y * cellSize + cellSize / 2}
-                textAnchor="middle"
-                dominantBaseline="central"
-                fontSize={cellSize * 0.8}
-                fill="orange"
-              >
-                {characterInitial}
-              </text>
+              <>
+                <text
+                  x={x * cellSize + cellSize / 2}
+                  y={y * cellSize + cellSize / 2}
+                  textAnchor="middle"
+                  dominantBaseline="central"
+                  fontSize={cellSize * 0.8}
+                  fill="orange"
+                >
+                  {characterInitial}
+                </text>
+                {placedCharacter && deadCharacters.includes(placedCharacter.character.id) && (
+                  <X
+                    x={x * cellSize}
+                    y={y * cellSize}
+                    width={cellSize}
+                    height={cellSize}
+                    className="text-red-500"
+                  />
+                )}
+                {placedCharacter && unconsciousCharacters.includes(placedCharacter.character.id) && (
+                  <X
+                    x={x * cellSize}
+                    y={y * cellSize}
+                    width={cellSize}
+                    height={cellSize}
+                    className="text-gray-500"
+                  />
+                )}
+              </>
             )}
             
-            {/* Add this block for character placement preview */}
             {placingCharacter && isHovered && cell === CellType.Empty && (
               <foreignObject x={x * cellSize} y={y * cellSize} width={cellSize} height={cellSize}>
                 <div className="w-full h-full flex items-center justify-center">

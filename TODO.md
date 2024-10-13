@@ -2,10 +2,9 @@ Tasks remaining:
 Combat:
 
 Small:
-7. When the Melee Attack complex action is selected, show buttons for any weapons and targets instead of dropdowns
-8. When a character has been killed, display a red X over their map icon. If they are unconscious, use a gray X.
-9. The complex actions, Fire Weapon should be desactivated when the character has no ranged weapons.
 10. When combat has ended, disable all movement and action buttons.
+11. +2 bonus to melee attacks when running is not being applied. -2 penalty to all other actions when running is not being applied
+12. Characters should not be able to run multiple times before the initiative phase resets
 
 Medium:
 - Highlight cover cells adjacent to the current character if they are in a path to an opposing character
