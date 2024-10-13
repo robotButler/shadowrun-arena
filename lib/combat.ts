@@ -229,7 +229,7 @@ function resolve_attack(attacker: CombatCharacter, defender: CombatCharacter, we
         if (physicalLimit < attack_hits) {
             limited_msg = ` , limited to ${limited_attack_hits} by Physical Limit of ${physicalLimit},`
         }
-        result.messages.push(`Attack rolls: ${attack_rolls.join(', ')} (${attack_hits} hits${limited_msg} ${attack_ones} ones)`);
+        result.messages.push(`Attack rolls: <dice>${attack_rolls.join(', ')}</dice> (${attack_hits} hits${limited_msg} ${attack_ones} ones)`);
 
         if (isCriticalGlitch) {
             const stunDamage = Math.floor(Math.random() * 6) + 1;
@@ -251,7 +251,7 @@ function resolve_attack(attacker: CombatCharacter, defender: CombatCharacter, we
         const { hits: defense_hits } = count_hits_and_ones(defense_rolls);
         result.defense_rolls = defense_rolls;
         result.defender_hits = defense_hits;
-        result.messages.push(`Defense rolls: ${defense_rolls.join(', ')} (${defense_hits} hits)`);
+        result.messages.push(`Defense rolls: <dice>${defense_rolls.join(', ')}</dice> (${defense_hits} hits)`);
 
         // Calculate net hits
         const net_hits = limited_attack_hits - defense_hits;
@@ -280,7 +280,7 @@ function resolve_attack(attacker: CombatCharacter, defender: CombatCharacter, we
         const resistance_rolls = roll_d6(resistance_pool);
         const { hits: resistance_hits } = count_hits_and_ones(resistance_rolls);
         result.resistance_rolls = resistance_rolls;
-        result.messages.push(`Resistance rolls: ${resistance_rolls.join(', ')} (${resistance_hits} hits)`);
+        result.messages.push(`Resistance rolls: <dice>${resistance_rolls.join(', ')}</dice> (${resistance_hits} hits)`);
 
         // Calculate damage taken
         const damage_taken = Math.max(total_damage - resistance_hits, 0);
@@ -344,7 +344,7 @@ function resolve_attack(attacker: CombatCharacter, defender: CombatCharacter, we
         if (physicalLimit < attack_hits) {
             limited_msg = ` , limited to ${limited_attack_hits} by Physical Limit of ${physicalLimit},`
         }
-        result.messages.push(`Attack rolls: ${attack_rolls.join(', ')} (${attack_hits} hits${limited_msg} ${attack_ones} ones)`);
+        result.messages.push(`Attack rolls: <dice>${attack_rolls.join(', ')}</dice> (${attack_hits} hits${limited_msg} ${attack_ones} ones)`);
 
         if (isCriticalGlitch) {
             const stunDamage = Math.floor(Math.random() * 6) + 1;
@@ -378,7 +378,7 @@ function resolve_attack(attacker: CombatCharacter, defender: CombatCharacter, we
         const { hits: defense_hits } = count_hits_and_ones(defense_rolls);
         result.defense_rolls = defense_rolls;
         result.defender_hits = defense_hits;
-        result.messages.push(`Defense rolls: ${defense_rolls.join(', ')} (${defense_hits} hits)`);
+        result.messages.push(`Defense rolls: <dice>${defense_rolls.join(', ')}</dice> (${defense_hits} hits)`);
 
         // Calculate net hits
         const net_hits = limited_attack_hits - defense_hits;
@@ -408,7 +408,7 @@ function resolve_attack(attacker: CombatCharacter, defender: CombatCharacter, we
         const resistance_rolls = roll_d6(resistance_pool);
         const { hits: resistance_hits } = count_hits_and_ones(resistance_rolls);
         result.resistance_rolls = resistance_rolls;
-        result.messages.push(`Resistance rolls: ${resistance_rolls.join(', ')} (${resistance_hits} hits)`);
+        result.messages.push(`Resistance rolls: <dice>${resistance_rolls.join(', ')}</dice> (${resistance_hits} hits)`);
 
         // Calculate damage taken
         const damage_taken = Math.max(total_damage - resistance_hits, 0);

@@ -1013,7 +1013,7 @@ export function CombatTab({
         <div className="text-right whitespace-nowrap px-1 text-black">
           {woundModifier > 0 && `${char.original_initiative} - ${woundModifier} wound =`}
         </div>
-        <div className="w-8 text-right text-black">{totalInitiative}</div>
+        <div className="w-8 text-right text-black">{phase}</div>
       </React.Fragment>
     );
   });

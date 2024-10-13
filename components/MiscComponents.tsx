@@ -7,25 +7,25 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { ChevronDown, ChevronUp } from 'lucide-react'
 import { ActionLogEntryProps, SimulationResultProps, FactionSelectorProps, Character, MatchResult } from '../lib/types'
 
-export function ActionLogEntry({ summary, details }: ActionLogEntryProps) {
-  const highlightDice = (diceRoll: string) => {
-    return diceRoll.split(', ').map((die, index) => {
-      const value = parseInt(die);
-      let className = '';
-      if (value >= 5) {
-        className = 'text-green-600 font-bold';
-      } else if (value === 1) {
-        className = 'text-red-600 font-bold';
-      }
-      return (
-        <span key={index} className={className}>
-          {die}
-          {index < diceRoll.split(', ').length - 1 ? ', ' : ''}
-        </span>
-      );
-    });
-  };
+export const highlightDice = (diceRoll: string) => {
+  return diceRoll.split(', ').map((die, index) => {
+    const value = parseInt(die);
+    let className = '';
+    if (value >= 5) {
+      className = 'text-green-600 font-bold';
+    } else if (value === 1) {
+      className = 'text-red-600 font-bold';
+    }
+    return (
+      <span key={index} className={className}>
+        {die}
+        {index < diceRoll.split(', ').length - 1 ? ', ' : ''}
+      </span>
+    );
+  });
+};
 
+export function ActionLogEntry({ summary, details }: ActionLogEntryProps) {
   return (
     <div className="mb-4">
       <h4 className="font-bold">{summary}</h4>
@@ -44,7 +44,7 @@ export function ActionLogEntry({ summary, details }: ActionLogEntryProps) {
                 <span className="font-semibold mr-2">{rollData.name}:</span>
                 <span className="mr-2">{rollData.total}</span>
                 <span className="text-sm text-gray-600">
-                  (Base: {rollData.base}, Dice: {highlightDice(rollData.dice.join(', '))}, Initiative Dice: {rollData.initiativeDice})
+                  (Base: {rollData.base} + initiative dice rolls: {rollData.dice.join(', ')})
                 </span>
               </div>
             );
@@ -60,7 +60,13 @@ export function ActionLogEntry({ summary, details }: ActionLogEntryProps) {
                 </p>
               );
             } else {
-              // If no dice rolls, display as regular text
+              // If no dice rolls, use highlightDice on any text enclosed in <dice> tags
+              const diceText = detail.match(/<dice>(.*?)<\/dice>/)?.[1];
+              if (diceText) {
+                const highlighedDice = highlightDice(diceText);
+                const [before, after] = detail.split(/<dice>(.*?)<\/dice>/);
+                return <p key={index} className="ml-4 break-words">{before} {highlighedDice} {after}</p>;
+              }
               return <p key={index} className="ml-4 break-words">{detail}</p>;
             }
           }

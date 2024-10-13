@@ -90,3 +90,15 @@ body {
     @apply bg-background text-foreground;
   }
 }
+
+.text-green-600 {
+  color: #059669;
+}
+
+.text-red-600 {
+  color: #dc2626;
+}
+
+.font-bold {
+  font-weight: bold;
+}
