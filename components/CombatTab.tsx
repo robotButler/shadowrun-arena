@@ -216,20 +216,6 @@ export function CombatTab({
     return order.sort((a, b) => b.phase - a.phase);
   };
 
-  const fullInitiativeOrder = (characters: CombatCharacter[]) => {
-    const order: { char: CombatCharacter, phase: number }[] = [];
-    characters.forEach(char => {
-      if (char.is_conscious && char.is_alive) {
-        let remainingInitiative = char.total_initiative();
-        while (remainingInitiative > 0) {
-          order.push({ char, phase: remainingInitiative });
-          remainingInitiative -= 10;
-        }
-      }
-    });
-    return order.sort((a, b) => b.phase - a.phase);
-  };
-
   const generateNewMap = () => {
     const newMap = generate_map(mapSize, partialCoverProb, hardCoverProb);
     
@@ -289,7 +275,9 @@ export function CombatTab({
     setCombatCharacters(result.updatedCharacters);
     setCurrentInitiativeIndex((prevIndex) => (prevIndex + 1) % currentInitiativeOrder.length);
     setCurrentCharacterIndex(result.newCharacterIndex);
-    updateActionLog(result.actionLog);
+    if (result.actionLog) {
+      updateActionLog(result.actionLog);
+    }
     
     // Reset action selections
     clearInputs();
@@ -302,37 +290,9 @@ export function CombatTab({
     setMaxMoveDistance(getMaxMoveDistance(result.updatedCharacters[result.newCharacterIndex]));
   };
 
-  const setDefaultWeaponAndTarget = () => {
-    if (combatCharacters.length > 0) {
-      const currentChar = combatCharacters[currentCharacterIndex];
-      const defaultWeapon = currentChar.weapons[0] || null;
-      const defaultTarget = combatCharacters.find(c => c.faction !== currentChar.faction && c.is_conscious)?.id || null;
-      
-      setSelectedWeapons([defaultWeapon, null]);
-      setSelectedTargets([defaultTarget, null]);
-    }
-  };
-
   const currentCharacter = combatCharacters[currentCharacterIndex];
   const hasMeleeWeapon = currentCharacter?.weapons.some(w => w.type === 'Melee');
   const hasRangedWeapon = currentCharacter?.weapons.some(w => w.type === 'Ranged');
-
-  const handleActionTypeSelection = (actionType: ActionType) => {
-    setSelectedActionType(prev => {
-      if (prev === actionType) {
-        return null;
-      }
-      return actionType;
-    });
-    setSelectedSimpleActions([]);
-    setSelectedComplexAction(null);
-    if (actionType) {
-      setDefaultWeaponAndTarget();
-    } else {
-      setSelectedWeapons([null, null]);
-      setSelectedTargets([null, null]);
-    }
-  };
 
   const handleSimpleActionSelection = (action: SimpleAction, index: number) => {
     if (!hasRangedWeapon && ['CallShot', 'ChangeFireMode', 'FireRangedWeapon', 'ReloadWeapon', 'TakeAim'].includes(action)) {
@@ -690,42 +650,6 @@ export function CombatTab({
     setRemainingMovement(updatedCharacter.movement_remaining);
     setMaxMoveDistance(newMaxMoveDistance);
     updateActionLog(actionLog);
-  };
-
-  const getAvailableMovementDistances = () => {
-    const currentChar = combatCharacters[currentCharacterIndex];
-    const isRunning = runningCharacters.has(currentChar.id);
-    const maxDistance = currentChar.attributes.agility * (isRunning ? 4 : 2);
-    const availableMovement = maxDistance - currentChar.movement_remaining;
-    
-    if (availableMovement <= 0) {
-      return [];
-    }
-
-    const opposingChars = combatCharacters.filter(c => c.faction !== currentChar.faction && c.is_conscious);
-    if (opposingChars.length === 0) {
-      return [];
-    }
-
-    const closestOpponent = opposingChars.reduce((closest, current) => 
-      calculateDistance(current.position, currentChar.position) < calculateDistance(closest.position, currentChar.position) ? current : closest
-    );
-
-    const isMovingToward = (movementDirection === 'Toward') === (calculateDistance(currentChar.position, closestOpponent.position) > 0);
-    
-    let availableDistances = [];
-    for (let i = 1; i <= availableMovement; i++) {
-      const newPosition = {
-        x: isMovingToward ? currentChar.position.x + (closestOpponent.position.x - currentChar.position.x) / Math.abs(closestOpponent.position.x - currentChar.position.x) * i : currentChar.position.x,
-        y: isMovingToward ? currentChar.position.y + (closestOpponent.position.y - currentChar.position.y) / Math.abs(closestOpponent.position.y - currentChar.position.y) * i : currentChar.position.y
-      };
-      
-      if (!opposingChars.some(opponent => opponent.position.x === newPosition.x && opponent.position.y === newPosition.y)) {
-        availableDistances.push(i);
-      }
-    }
-
-    return availableDistances;
   };
 
   const handleAcceptMap = () => {
@@ -1120,8 +1044,8 @@ export function CombatTab({
                           const woundModifier = Math.floor((currentChar.physical_damage + currentChar.stun_damage) / 3);
                           return (
                             <>
-                              <div>Physical: {currentChar.physical_damage} / {maxPhysical}</div>
-                              <div>Stun: {currentChar.stun_damage} / {maxStun}</div>
+                              <div>Physical: {maxPhysical - currentChar.physical_damage} / {maxPhysical}</div>
+                              <div>Stun: {maxStun - currentChar.stun_damage} / {maxStun}</div>
                               <div>Wound Modifier: -{woundModifier}</div>
                               <div>Status: {currentChar.is_alive ? (currentChar.is_conscious ? 'Conscious' : 'Unconscious') : 'Dead'}</div>
                             </>
