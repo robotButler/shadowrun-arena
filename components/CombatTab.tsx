@@ -79,7 +79,6 @@ export function CombatTab({
   handleAddToFaction: (characterId: string, faction: 'faction1' | 'faction2') => void
   handleRemoveFromFaction: (characterId: string, faction: 'faction1' | 'faction2') => void
 }) {
-  console.log("CombatTab received factions:", { faction1, faction2 });
 
   const [isCombatActive, setIsCombatActive] = useState(false);
   const [combatCharacters, setCombatCharacters] = useState<CombatCharacter[]>([]);
@@ -123,29 +122,11 @@ export function CombatTab({
   const [sprintingCharacters, setSprintingCharacters] = useState<Set<string>>(new Set());
   const [sprintBonuses, setSprintBonuses] = useState<Record<string, number>>({});
 
-  console.log("CombatTab props:", { 
-    characters, 
-    faction1, 
-    faction2, 
-    factionModifiers 
-  });
-
   useEffect(() => {
     if (faction1.length > 0 || faction2.length > 0) {
       generateNewMap();
     }
   }, [faction1, faction2]);
-
-  useEffect(() => {
-    if (isCombatActive) {
-      console.log("Factions changed during active combat:", { faction1, faction2 });
-    }
-  }, [faction1, faction2, isCombatActive]);
-
-  // Debug: Log placedCharacters whenever it changes
-  useEffect(() => {
-    console.log("placedCharacters updated:", placedCharacters);
-  }, [placedCharacters]);
 
   // Update this useEffect to keep placedCharacters in sync with combatCharacters
   useEffect(() => {
@@ -198,44 +179,28 @@ export function CombatTab({
     if (combatCharacters.length > 0 && gameMap) {
       const currentChar = combatCharacters[currentCharacterIndex];
       const opponents = combatCharacters.filter(c => c.faction !== currentChar.faction && c.is_conscious);
-      console.log("Checking if character can take cover:", currentChar.name);
-      console.log("Game map:", gameMap);
-      console.log("Opponents:", opponents);
       const canTakeCoverResult = canTakeCover(currentChar, gameMap, opponents);
-      console.log("Can take cover result:", canTakeCoverResult);
       setCanUseTakeCover(canTakeCoverResult);
     }
   }, [combatCharacters, currentCharacterIndex, gameMap]);
 
   useEffect(() => {
-    console.log("Current character index changed to:", currentCharacterIndex);
     if (combatCharacters.length > 0) {
       const currentChar = combatCharacters[currentCharacterIndex];
-      console.log("Current character:", currentChar.name);
       setRemainingMovement(currentChar.movement_remaining);
       setMaxMoveDistance(getMaxMoveDistance(currentChar));
     }
   }, [currentCharacterIndex, combatCharacters]);
 
   useEffect(() => {
-    console.log("--- Initiative order changed ---");
-    console.log("New initiative order:", currentInitiativeOrder.map(io => `${io.char.name} (${io.phase})`));
     if (currentInitiativeOrder.length > 0) {
       const currentChar = currentInitiativeOrder[currentInitiativeIndex % currentInitiativeOrder.length].char;
-      console.log("Current character from initiative order:", currentChar.name);
       const newIndex = combatCharacters.findIndex(char => char.id === currentChar.id);
-      console.log(`Setting current character index to ${newIndex}`);
       setCurrentCharacterIndex(newIndex);
       setRemainingMovement(currentChar.movement_remaining);
       setMaxMoveDistance(getMaxMoveDistance(currentChar));
-      console.log("Updated current character index to:", newIndex);
     }
   }, [currentInitiativeOrder, combatCharacters]);
-
-  useEffect(() => {
-    console.log("Initiative order changed:", currentInitiativeOrder.map(io => `${io.char.name} (${io.phase})`));
-    console.log("Current character index:", currentCharacterIndex);
-  }, [currentInitiativeOrder, currentCharacterIndex]);
 
   const calculateInitiativeOrder = (characters: CombatCharacter[]) => {
     const order: { char: CombatCharacter, phase: number }[] = [];
@@ -267,18 +232,14 @@ export function CombatTab({
 
   const generateNewMap = () => {
     const newMap = generate_map(mapSize, partialCoverProb, hardCoverProb);
-    console.log("New map generated:", newMap);
     
     // Automatically place characters in random positions
     const allCharacters = [...faction1, ...faction2].map(id => characters.find(c => c.id === id)).filter(Boolean) as Character[];
-    console.log("All characters to place:", allCharacters);
 
     const newPlacedCharacters = allCharacters.map(character => {
       const position = getRandomEmptyPosition(newMap, allCharacters.length);
-      console.log(`Placing ${character.name} at position:`, position);
       return { character, position };
     });
-    console.log("New placed characters:", newPlacedCharacters);
     
     // Update both map and placed characters in a single state update
     setGameMap(newMap);
@@ -324,9 +285,6 @@ export function CombatTab({
   };
 
   const nextCharacter = () => {
-    console.log("--- nextCharacter started ---");
-    console.log("Current initiative order:", currentInitiativeOrder.map(io => `${io.char.name} (${io.phase})`));
-    
     const result = updateInitiative(combatCharacters, currentCharacterIndex, initialInitiatives);
     setCombatCharacters(result.updatedCharacters);
     setCurrentInitiativeIndex((prevIndex) => (prevIndex + 1) % currentInitiativeOrder.length);
@@ -342,10 +300,6 @@ export function CombatTab({
     // Update remaining movement for the new character
     setRemainingMovement(result.updatedCharacters[result.newCharacterIndex].movement_remaining);
     setMaxMoveDistance(getMaxMoveDistance(result.updatedCharacters[result.newCharacterIndex]));
-
-    console.log("New current character index:", result.newCharacterIndex);
-    console.log("New current character:", result.updatedCharacters[result.newCharacterIndex].name);
-    console.log("--- nextCharacter finished ---");
   };
 
   const setDefaultWeaponAndTarget = () => {
@@ -610,39 +564,21 @@ export function CombatTab({
   };
 
   const handleSimpleActionsHandler = () => {
-    console.log("--- handleSimpleActionsHandler started ---");
-    console.log("Current character:", combatCharacters[currentCharacterIndex].name);
-    console.log("Current initiative order:", currentInitiativeOrder.map(io => `${io.char.name} (${io.phase})`));
-
     if (!gameMap) {
-      console.error("Game map is not initialized.");
       toast.error("Game map is not initialized.");
       return;
     }
 
     // Filter out null actions
     const validSimpleActions = selectedSimpleActions.filter((action): action is SimpleAction => action !== null);
-    console.log("Valid simple actions:", validSimpleActions);
 
     if (validSimpleActions.length === 0) {
-      console.error("No valid simple actions selected.");
       toast.error("No valid simple actions selected.");
       return;
     }
 
     const currentChar = combatCharacters[currentCharacterIndex];
     const isCurrentlyRunning = runningCharacters.has(currentChar.id);
-
-    console.log("Calling handleSimpleActions with:", {
-      combatCharacters: combatCharacters.map(c => ({ id: c.id, name: c.name })),
-      currentCharacterIndex,
-      validSimpleActions,
-      selectedWeapons: selectedWeapons.filter((_, index) => selectedSimpleActions[index] !== null),
-      selectedTargets: selectedTargets.filter((_, index) => selectedSimpleActions[index] !== null),
-      remainingMovement,
-      isRunning: isCurrentlyRunning,
-      gameMap: "Initialized"
-    });
 
     try {
       const result = handleSimpleActions(
@@ -655,9 +591,6 @@ export function CombatTab({
         isCurrentlyRunning,
         gameMap
       );
-
-      console.log("handleSimpleActions result:", result);
-      console.log("Updated characters:", result.updatedCharacters.map(c => `${c.name} (Initiative: ${c.current_initiative})`));
 
       // Update the combat characters
       setCombatCharacters(result.updatedCharacters);
@@ -674,14 +607,9 @@ export function CombatTab({
       setCurrentInitiativeOrder(newInitiativeOrder);
       setCurrentInitiativeIndex((currentInitiativeIndex + 1) % newInitiativeOrder.length);
 
-      console.log("New initiative order:", newInitiativeOrder.map(io => `${io.char.name} (${io.phase})`));
-
       // Set the new current character
       const newCurrentCharIndex = newInitiativeOrder[0] ? result.updatedCharacters.findIndex(char => char.id === newInitiativeOrder[0].char.id) : 0;
       setCurrentCharacterIndex(newCurrentCharIndex);
-
-      console.log("New current character index:", newCurrentCharIndex);
-      console.log("New current character:", result.updatedCharacters[newCurrentCharIndex].name);
 
       // Update remaining movement for the new character
       setRemainingMovement(result.updatedCharacters[newCurrentCharIndex].movement_remaining);
@@ -703,7 +631,6 @@ export function CombatTab({
     } catch (error) {
       console.error("Error in handleSimpleActions:", error);
     }
-    console.log("--- handleSimpleActionsHandler finished ---");
   };
 
   const handleFreeActionSelection = (action: 'CallShot' | 'ChangeFireMode') => {
@@ -1448,14 +1375,8 @@ export function CombatTab({
                       <span className="w-full">
                         <Button 
                           onClick={() => {
-                            console.log("--- Perform Action button clicked ---");
-                            console.log("Current character:", combatCharacters[currentCharacterIndex].name);
-                            console.log("Selected action type:", selectedActionType);
-                            console.log("Selected simple actions:", selectedSimpleActions);
-
                             const currentChar = combatCharacters[currentCharacterIndex];
                             if (!currentChar.is_alive || !currentChar.is_conscious) {
-                              console.log("Current character is incapacitated");
                               nextCharacter();
                               return;
                             }
@@ -1463,18 +1384,14 @@ export function CombatTab({
                             const hasSimpleAction = selectedSimpleActions.some(action => action !== null);
 
                             if (hasSimpleAction || selectedActionType === 'Simple') {
-                              console.log("Calling handleSimpleActionsHandler");
                               handleSimpleActionsHandler();
                             } else if (selectedActionType === 'Complex') {
-                              console.log("Calling handleComplexActionHandler");
                               handleComplexActionHandler();
                             } else if (selectedFreeAction) {
-                              console.log("Handling Free Action");
                               updateActionLog({ summary: `${currentChar.name} performed a ${selectedFreeAction} action.`, details: [] });
                               clearInputs();
                               nextCharacter();
                             } else if (movementDistance > 0) {
-                              console.log("Calling handleMovementHandler");
                               handleMovementHandler();
                             } else {
                               console.log("No action selected");

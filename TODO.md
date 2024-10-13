@@ -2,7 +2,6 @@ Tasks remaining:
 Combat:
 
 Small:
-6. In the action log, dice rolls that are hits should be highlighted in green and 1s should be highlighted in red
 7. When the Melee Attack complex action is selected, show buttons for any weapons and targets instead of dropdowns
 8. When a character has been killed, display a red X over their map icon. If they are unconscious, use a gray X.
 9. The complex actions, Fire Weapon should be desactivated when the character has no ranged weapons.
