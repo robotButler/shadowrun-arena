@@ -217,9 +217,14 @@ function resolve_attack(
         const modifiers = reach_modifier - wound_modifier + attacker.situational_modifiers + running_target_modifier + runModifier;
         const total_attack_pool = Math.max(base_pool + modifiers, 1);
         
-        let modifierBreakdown = `Base pool (${base_pool}) + Reach modifier (${reach_modifier}) - Wound modifier (${wound_modifier}) + Situational modifiers (${attacker.situational_modifiers}) + Running target modifier (${running_target_modifier}) + Run modifier (${runModifier})`;
+        let modifierBreakdown = [`Base pool (${base_pool})`];
+        if (reach_modifier !== 0) modifierBreakdown.push(`Reach modifier (${reach_modifier})`);
+        if (wound_modifier !== 0) modifierBreakdown.push(`Wound modifier (-${wound_modifier})`);
+        if (attacker.situational_modifiers !== 0) modifierBreakdown.push(`Situational modifiers (${attacker.situational_modifiers})`);
+        if (running_target_modifier !== 0) modifierBreakdown.push(`Running target modifier (${running_target_modifier})`);
+        if (runModifier !== 0) modifierBreakdown.push(`Run modifier (${runModifier})`);
         
-        result.messages.push(`Melee Attack: ${modifierBreakdown} = Total attack pool (${total_attack_pool})`);
+        result.messages.push(`Melee Attack: ${modifierBreakdown.join(' + ')} = Total attack pool (${total_attack_pool})`);
 
         const attack_rolls = roll_d6(total_attack_pool);
         const { hits: attack_hits, ones: attack_ones, isGlitch, isCriticalGlitch } = count_hits_and_ones(attack_rolls);
@@ -253,7 +258,13 @@ function resolve_attack(
         const base_defense_pool = defender.attributes.reaction + defender.attributes.intuition;
         const defender_wound_modifier = calculate_wound_modifier(defender);
         const total_defense_pool = Math.max(base_defense_pool - reach_modifier - defender_wound_modifier + defender.situational_modifiers, 1);
-        result.messages.push(`Defense: Base pool (${base_defense_pool}) - Reach modifier (${reach_modifier}) - Wound modifier (${defender_wound_modifier}) + Situational modifiers (${defender.situational_modifiers}) = Total defense pool (${total_defense_pool})`);
+        
+        let defenseModifierBreakdown = [`Base pool (${base_defense_pool})`];
+        if (reach_modifier !== 0) defenseModifierBreakdown.push(`Reach modifier (-${reach_modifier})`);
+        if (defender_wound_modifier !== 0) defenseModifierBreakdown.push(`Wound modifier (-${defender_wound_modifier})`);
+        if (defender.situational_modifiers !== 0) defenseModifierBreakdown.push(`Situational modifiers (${defender.situational_modifiers})`);
+        
+        result.messages.push(`Defense: ${defenseModifierBreakdown.join(' + ')} = Total defense pool (${total_defense_pool})`);
 
         const defense_rolls = roll_d6(total_defense_pool);
         const { hits: defense_hits } = count_hits_and_ones(defense_rolls);
@@ -283,7 +294,12 @@ function resolve_attack(
         const defender_wound_modifier_resistance = calculate_wound_modifier(defender);
         resistance_pool += defender.situational_modifiers;
         resistance_pool = Math.max(resistance_pool, 1);
-        result.messages.push(`Damage resistance pool: Body (${defender.attributes.body}) + Modified armor (${Math.max(modified_armor, 0)}) + Situational modifiers (${defender.situational_modifiers}) = ${resistance_pool}`);
+        
+        let resistanceModifierBreakdown = [`Body (${defender.attributes.body})`, `Modified armor (${Math.max(modified_armor, 0)})`];
+        if (defender_wound_modifier_resistance !== 0) resistanceModifierBreakdown.push(`Wound modifier (-${defender_wound_modifier_resistance})`);
+        if (defender.situational_modifiers !== 0) resistanceModifierBreakdown.push(`Situational modifiers (${defender.situational_modifiers})`);
+        
+        result.messages.push(`Damage resistance pool: ${resistanceModifierBreakdown.join(' + ')} = ${resistance_pool}`);
 
         const resistance_rolls = roll_d6(resistance_pool);
         const { hits: resistance_hits } = count_hits_and_ones(resistance_rolls);
@@ -332,9 +348,15 @@ function resolve_attack(
         const modifiers = range_modifier + recoil_modifier - wound_modifier + attacker.situational_modifiers + running_target_modifier + runModifier;
         const total_attack_pool = Math.max(base_pool + modifiers, 1);
         
-        let modifierBreakdown = `Base pool (${base_pool}) + Range modifier (${range_modifier}) + Recoil modifier (${recoil_modifier}) - Wound modifier (${wound_modifier}) + Situational modifiers (${attacker.situational_modifiers}) + Running target modifier (${running_target_modifier}) + Run modifier (${runModifier})`;
+        let modifierBreakdown = [`Base pool (${base_pool})`];
+        if (range_modifier !== 0) modifierBreakdown.push(`Range modifier (${range_modifier})`);
+        if (recoil_modifier !== 0) modifierBreakdown.push(`Recoil modifier (${recoil_modifier})`);
+        if (wound_modifier !== 0) modifierBreakdown.push(`Wound modifier (-${wound_modifier})`);
+        if (attacker.situational_modifiers !== 0) modifierBreakdown.push(`Situational modifiers (${attacker.situational_modifiers})`);
+        if (running_target_modifier !== 0) modifierBreakdown.push(`Running target modifier (${running_target_modifier})`);
+        if (runModifier !== 0) modifierBreakdown.push(`Run modifier (${runModifier})`);
         
-        result.messages.push(`Attack Pool: ${modifierBreakdown} = Total attack pool (${total_attack_pool})`);
+        result.messages.push(`Attack Pool: ${modifierBreakdown.join(' + ')} = Total attack pool (${total_attack_pool})`);
 
         const attack_rolls = roll_d6(total_attack_pool);
         const { hits: attack_hits, ones: attack_ones, isGlitch, isCriticalGlitch } = count_hits_and_ones(attack_rolls);
@@ -380,7 +402,14 @@ function resolve_attack(
         defense_modifiers += coverBonus;
         
         const total_defense_pool = Math.max(base_defense_pool + defense_modifiers, 1);
-        result.messages.push(`Defense: Base pool (${base_defense_pool}) + Defense modifiers (${defense_modifiers}) + Cover bonus (${coverBonus}) = Total defense pool (${total_defense_pool})`);
+        
+        let defenseModifierBreakdown = [`Base pool (${base_defense_pool})`];
+        if (fire_mode === 'BF' || fire_mode === 'FA') defenseModifierBreakdown.push(`Fire mode modifier (${defense_modifiers})`);
+        if (defender_wound_modifier !== 0) defenseModifierBreakdown.push(`Wound modifier (-${defender_wound_modifier})`);
+        if (defender.situational_modifiers !== 0) defenseModifierBreakdown.push(`Situational modifiers (${defender.situational_modifiers})`);
+        if (coverBonus !== 0) defenseModifierBreakdown.push(`Cover bonus (${coverBonus})`);
+        
+        result.messages.push(`Defense: ${defenseModifierBreakdown.join(' + ')} = Total defense pool (${total_defense_pool})`);
 
         const defense_rolls = roll_d6(total_defense_pool);
         const { hits: defense_hits } = count_hits_and_ones(defense_rolls);
@@ -411,7 +440,12 @@ function resolve_attack(
         resistance_pool -= defender_wound_modifier_resistance;
         resistance_pool += defender.situational_modifiers;
         resistance_pool = Math.max(resistance_pool, 1);
-        result.messages.push(`Damage resistance pool: Body (${defender.attributes.body}) + Modified armor (${Math.max(modified_armor, 0)}) - Wound modifier (${defender_wound_modifier_resistance}) + Situational modifiers (${defender.situational_modifiers}) = ${resistance_pool}`);
+        
+        let resistanceModifierBreakdown = [`Body (${defender.attributes.body})`, `Modified armor (${Math.max(modified_armor, 0)})`];
+        if (defender_wound_modifier_resistance !== 0) resistanceModifierBreakdown.push(`Wound modifier (-${defender_wound_modifier_resistance})`);
+        if (defender.situational_modifiers !== 0) resistanceModifierBreakdown.push(`Situational modifiers (${defender.situational_modifiers})`);
+        
+        result.messages.push(`Damage resistance pool: ${resistanceModifierBreakdown.join(' + ')} = ${resistance_pool}`);
 
         const resistance_rolls = roll_d6(resistance_pool);
         const { hits: resistance_hits } = count_hits_and_ones(resistance_rolls);

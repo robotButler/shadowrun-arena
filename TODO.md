@@ -2,7 +2,6 @@ Tasks remaining:
 Combat:
 
 Small:
-13. When listing the Attack Pool: or the Defense: or the Damage Resistance Pool: in the Action Log,skip any modifiers that are zero
 14. Disable the TakeCover buttons if the character can't take cover.
 15. When a character moves the full distance allowed, disable the Select Move Target button.
 
