@@ -23,6 +23,10 @@ import { calculateDistance } from './utils';
 
 const MELEE_RANGE = 2; // Melee range in meters
 
+// Add this constant at the top of the file
+const RUN_MELEE_BONUS = 4;
+const RUN_OTHER_PENALTY = -2;
+
 const updatePosition = (position: Vector, direction: Vector, distance: number): Vector => {
   return {
     x: position.x + direction.x * distance,
@@ -312,7 +316,7 @@ export const handleComplexAction = (
   selectedWeapon: Weapon | null,
   selectedTargetId: string | null,
   remainingMovement: number,
-  gameMap: GameMap  // Add this parameter
+  gameMap: GameMap
 ): {
   updatedCharacters: CombatCharacter[],
   actionLog: { summary: string, details: string[] },
@@ -364,7 +368,26 @@ export const handleComplexAction = (
         }
       }
 
-      const result = resolve_attack(currentChar, target, selectedWeapon, selectedWeapon.currentFireMode ?? undefined, distance, gameMap);
+      let runModifier = 0;
+      if (currentChar.isRunning) {
+        if (selectedComplexAction === 'MeleeAttack') {
+          runModifier = RUN_MELEE_BONUS;
+          actionLog.details.push(`Applied +${RUN_MELEE_BONUS} bonus to melee attack while running.`);
+        } else {
+          runModifier = RUN_OTHER_PENALTY;
+          actionLog.details.push(`Applied ${RUN_OTHER_PENALTY} penalty to ranged attack while running.`);
+        }
+      }
+
+      const result = resolve_attack(
+        currentChar,
+        target,
+        selectedWeapon,
+        selectedWeapon.currentFireMode ?? undefined,
+        distance,
+        gameMap,
+        runModifier
+      );
       
       actionLog.summary = `${currentChar.name} attacked ${target.name} with ${selectedWeapon.name}`;
       if (result.criticalGlitch) {
@@ -440,9 +463,16 @@ export const handleSimpleActions = (
       const target = combatCharacters.find(c => c.id === targetId);
       if (target) {
         const distance = calculateDistance(currentChar.position, target.position);
-        const result = resolve_attack(currentChar, target, weapon, weapon.currentFireMode ?? 'SS', distance, gameMap);
+        const runModifier = isRunning ? RUN_OTHER_PENALTY : 0;
+        const result = resolve_attack(currentChar, target, weapon, weapon.currentFireMode ?? 'SS', distance, gameMap, runModifier);
+        
         const summary = `${currentChar.name} fired at ${target.name} with ${weapon.name} and dealt ${result.damage_dealt} damage.`;
-        actionLog.push({ summary, details: result.messages });
+        const details = [
+          ...result.messages,
+          isRunning ? `Applied ${RUN_OTHER_PENALTY} penalty to ranged attack while running.` : ''
+        ].filter(Boolean);
+        
+        actionLog.push({ summary, details });
         
         updatedChars = combatCharacters.map(char => 
           char.id === currentChar.id ? { ...char, ...currentChar } :
@@ -464,7 +494,13 @@ export const handleSimpleActions = (
         actionLog.push({ summary, details: [] });
       }
     } else if (action === 'TakeAim') {
-      actionLog.push({ summary: `${currentChar.name} took aim.`, details: [] });
+      const runModifier = isRunning ? RUN_OTHER_PENALTY : 0;
+      actionLog.push({
+        summary: `${currentChar.name} took aim.`,
+        details: isRunning ? [`Applied ${RUN_OTHER_PENALTY} penalty to Take Aim action while running.`] : []
+      });
+      // Apply the run modifier to the character's situational modifiers
+      updatedChars[currentCharacterIndex].situational_modifiers += runModifier;
     } else if (action === 'TakeCover') {
       console.log("Attempting to take cover");
       const opponents = updatedChars.filter(c => c.faction !== currentChar.faction && c.is_conscious);

@@ -180,7 +180,15 @@ function get_range_modifier(weapon_type: WeaponType, distance: number): number {
 }
 
 // Update the resolve_attack function
-function resolve_attack(attacker: CombatCharacter, defender: CombatCharacter, weapon: Weapon, fire_mode: 'SS' | 'SA' | 'BF' | 'FA' = 'SA', distance: number = 0, gameMap: GameMap): RoundResult {
+function resolve_attack(
+  attacker: CombatCharacter,
+  defender: CombatCharacter,
+  weapon: Weapon,
+  fire_mode: 'SS' | 'SA' | 'BF' | 'FA' = 'SA',
+  distance: number = 0,
+  gameMap: GameMap,
+  runModifier: number = 0
+): RoundResult {
     console.log('Attacking with weapon:', weapon);
     const result: RoundResult = {
         actingCharacter: attacker.name,
@@ -206,10 +214,10 @@ function resolve_attack(attacker: CombatCharacter, defender: CombatCharacter, we
         // Add running target modifier
         const running_target_modifier = defender.isRunning ? -2 : 0;
         
-        const modifiers = reach_modifier - wound_modifier + attacker.situational_modifiers + running_target_modifier;
+        const modifiers = reach_modifier - wound_modifier + attacker.situational_modifiers + running_target_modifier + runModifier;
         const total_attack_pool = Math.max(base_pool + modifiers, 1);
         
-        let modifierBreakdown = `Base pool (${base_pool}) + Reach modifier (${reach_modifier}) - Wound modifier (${wound_modifier}) + Situational modifiers (${attacker.situational_modifiers}) + Running target modifier (${running_target_modifier})`;
+        let modifierBreakdown = `Base pool (${base_pool}) + Reach modifier (${reach_modifier}) - Wound modifier (${wound_modifier}) + Situational modifiers (${attacker.situational_modifiers}) + Running target modifier (${running_target_modifier}) + Run modifier (${runModifier})`;
         
         result.messages.push(`Melee Attack: ${modifierBreakdown} = Total attack pool (${total_attack_pool})`);
 
@@ -321,10 +329,10 @@ function resolve_attack(attacker: CombatCharacter, defender: CombatCharacter, we
         // Add running target modifier
         const running_target_modifier = defender.isRunning ? -2 : 0;
         
-        const modifiers = range_modifier + recoil_modifier - wound_modifier + attacker.situational_modifiers + running_target_modifier;
+        const modifiers = range_modifier + recoil_modifier - wound_modifier + attacker.situational_modifiers + running_target_modifier + runModifier;
         const total_attack_pool = Math.max(base_pool + modifiers, 1);
         
-        let modifierBreakdown = `Base pool (${base_pool}) + Range modifier (${range_modifier}) + Recoil modifier (${recoil_modifier}) - Wound modifier (${wound_modifier}) + Situational modifiers (${attacker.situational_modifiers}) + Running target modifier (${running_target_modifier})`;
+        let modifierBreakdown = `Base pool (${base_pool}) + Range modifier (${range_modifier}) + Recoil modifier (${recoil_modifier}) - Wound modifier (${wound_modifier}) + Situational modifiers (${attacker.situational_modifiers}) + Running target modifier (${running_target_modifier}) + Run modifier (${runModifier})`;
         
         result.messages.push(`Attack Pool: ${modifierBreakdown} = Total attack pool (${total_attack_pool})`);
 

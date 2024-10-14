@@ -2,8 +2,8 @@ Tasks remaining:
 Combat:
 
 Small:
-11. +2 bonus to melee attacks when running is not being applied. -2 penalty to all other actions when running is not being applied
 12. Characters should not be able to run multiple times before the initiative phase resets
+13. When listing the Attack Pool: or the Defense: or the Damage Resistance Pool: in the Action Log,skip any modifiers that are zero
 
 Medium:
 - Highlight cover cells adjacent to the current character if they are in a path to an opposing character
