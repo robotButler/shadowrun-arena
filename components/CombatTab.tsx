@@ -1207,7 +1207,8 @@ export function CombatTab({
                                   disabled={
                                     isActionDisabled() ||
                                     selectedActionType === 'Complex' ||
-                                    (!hasRangedWeapon && ['CallShot', 'ChangeFireMode', 'FireRangedWeapon', 'ReloadWeapon', 'TakeAim'].includes(action))
+                                    (!hasRangedWeapon && ['CallShot', 'ChangeFireMode', 'FireRangedWeapon', 'ReloadWeapon', 'TakeAim'].includes(action)) ||
+                                    (action === 'TakeCover' && !canUseTakeCover)
                                   }
                                 >
                                   {action}

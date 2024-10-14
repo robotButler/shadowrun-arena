@@ -2,7 +2,6 @@ Tasks remaining:
 Combat:
 
 Small:
-14. Disable the TakeCover buttons if the character can't take cover.
 15. When a character moves the full distance allowed, disable the Select Move Target button.
 
 Medium:
