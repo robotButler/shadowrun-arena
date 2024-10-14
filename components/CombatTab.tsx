@@ -261,7 +261,8 @@ export function CombatTab({
     // Set initial remaining movement for all characters
     const initialCombatCharacters = result.combatCharacters.map(char => ({
       ...char,
-      movement_remaining: char.attributes.agility * 2
+      movement_remaining: char.attributes.agility * 2,
+      hasRunThisPhase: false // Add this line
     }));
     setCombatCharacters(initialCombatCharacters);
     
@@ -293,6 +294,9 @@ export function CombatTab({
     // Update remaining movement for the new character
     setRemainingMovement(result.updatedCharacters[result.newCharacterIndex].movement_remaining);
     setMaxMoveDistance(getMaxMoveDistance(result.updatedCharacters[result.newCharacterIndex]));
+
+    // Reset running characters
+    setRunningCharacters(new Set());
   };
 
   const currentCharacter = combatCharacters[currentCharacterIndex];
@@ -635,8 +639,8 @@ export function CombatTab({
     const isCurrentlyRunning = runningCharacters.has(currentChar.id);
     const isCurrentlySprinting = sprintingCharacters.has(currentChar.id);
 
-    if (isCurrentlySprinting) {
-      return; // Do nothing if sprinting
+    if (isCurrentlySprinting || currentChar.hasRunThisPhase) {
+      return; // Do nothing if sprinting or has already run this phase
     }
 
     if (isCurrentlyRunning && hasMovedWhileRunning) {
@@ -645,6 +649,11 @@ export function CombatTab({
     
     const { updatedCharacter, actionLog } = handleRunActionFromInterface(currentChar, isCurrentlyRunning);
     
+    if (actionLog.summary.includes("cannot run again")) {
+      toast.error(actionLog.summary);
+      return;
+    }
+
     setRunningCharacters(prev => {
       const newSet = new Set(prev);
       if (isCurrentlyRunning) {
@@ -1135,7 +1144,7 @@ export function CombatTab({
                       <Button
                         variant={runningCharacters.has(currentCharacter.id) ? 'default' : 'outline'}
                         onClick={handleRunActionInComponent}
-                        disabled={isActionDisabled() || sprintingCharacters.has(currentCharacter.id)}
+                        disabled={isActionDisabled() || sprintingCharacters.has(currentCharacter.id) || currentCharacter.hasRunThisPhase}
                       >
                         <Play className="mr-2 h-4 w-4" /> Run
                       </Button>

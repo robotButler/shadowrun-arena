@@ -60,7 +60,7 @@ export interface CombatCharacter extends Character {
   faction: 'faction1' | 'faction2'
   total_initiative: () => number
   original_initiative: number
-  position: Vector  // Changed from number to Vector
+  position: Vector
   previousPhysicalDamage: number
   previousStunDamage: number
   movement_remaining: number
@@ -70,10 +70,11 @@ export interface CombatCharacter extends Character {
   is_alive: boolean;
   isTakingCover: boolean;
   adjacentCoverCells: Vector[];
-  hasMoved: boolean; // Add this new property
-  isRunning: boolean; // Added as per the colleague's instructions
-  isSprinting: boolean; // Added as per the colleague's instructions
-  // New methods
+  hasMoved: boolean;
+  isRunning: boolean;
+  isSprinting: boolean;
+  hasRunThisPhase: boolean; // Add this new property
+  // Methods
   updateStatus(): void;
   getStatusChanges(): string[];
 }

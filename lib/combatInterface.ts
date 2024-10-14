@@ -139,6 +139,8 @@ export const createCombatCharacter = (
   adjacentCoverCells: [],
   hasMoved: false,
   isRunning: false,
+  isSprinting: false,
+  hasRunThisPhase: false,
   calculate_wound_modifier: function() {
     return calculate_wound_modifier(this);
   },
@@ -190,6 +192,7 @@ export const updateInitiative = (
     currentChar.movement_remaining = currentChar.attributes.agility * 2;
     currentChar.isRunning = false;
     currentChar.isSprinting = false;
+    currentChar.hasRunThisPhase = false; // Reset the run flag
   }
 
   // Reset action selections for all characters
@@ -640,8 +643,18 @@ export const handleRunAction = (character: CombatCharacter, isCurrentlyRunning: 
   
   if (!isCurrentlyRunning) {
     // Start running
+    if (updatedCharacter.hasRunThisPhase) {
+      return {
+        updatedCharacter,
+        actionLog: {
+          summary: `${character.name} cannot run again in this initiative phase.`,
+          details: [`Characters can only run once per initiative phase.`]
+        }
+      };
+    }
     updatedCharacter.movement_remaining *= 2;
     updatedCharacter.isRunning = true;
+    updatedCharacter.hasRunThisPhase = true;
     return {
       updatedCharacter,
       actionLog: {

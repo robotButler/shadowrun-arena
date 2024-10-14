@@ -2,8 +2,9 @@ Tasks remaining:
 Combat:
 
 Small:
-12. Characters should not be able to run multiple times before the initiative phase resets
 13. When listing the Attack Pool: or the Defense: or the Damage Resistance Pool: in the Action Log,skip any modifiers that are zero
+14. Disable the TakeCover buttons if the character can't take cover.
+15. When a character moves the full distance allowed, disable the Select Move Target button.
 
 Medium:
 - Highlight cover cells adjacent to the current character if they are in a path to an opposing character
