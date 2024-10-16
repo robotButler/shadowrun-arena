@@ -3,7 +3,7 @@
 import { Character, CombatCharacter, Weapon, MatchResult, RoundResult } from './types'
 import { roll_initiative, resolve_attack, check_combat_end, select_best_weapon, get_ideal_range } from './combat'
 import { calculateMaxPhysicalHealth, calculateMaxStunHealth, isCharacterAlive, isCharacterConscious, calculatePhysicalLimit, calculateMentalLimit } from './utils';
-import { calculateDistance } from './utils';
+import { taxicabDistance } from './utils';
 import { ManagedCharacter } from './characterManagement';
 import { getRandomEmptyCell } from './utils';
 import { GameMap } from './map';
@@ -88,7 +88,7 @@ export const simulateRound = (characters: CombatCharacter[], gameMap: GameMap): 
     if (!target) continue
 
     const weapon = selectWeapon(character)
-    let distance = calculateDistance(character.position, target.position)
+    let distance = taxicabDistance(character.position, target.position)
 
     // Determine action based on distance and weapon type
     const maxRange = getMaxRange(weapon);
@@ -102,7 +102,7 @@ export const simulateRound = (characters: CombatCharacter[], gameMap: GameMap): 
         y: character.position.y + moveDistance * (character.position.y < target.position.y ? 1 : -1)
       };
       character.movement_remaining -= moveDistance;
-      distance = calculateDistance(character.position, target.position); // Recalculate distance after movement
+      distance = taxicabDistance(character.position, target.position); // Recalculate distance after movement
       roundResult.messages.push(`${character.name} moved ${moveDistance} meters towards ${target.name}. New distance: ${distance} meters.`);
     }
 
@@ -147,7 +147,7 @@ export const simulateRound = (characters: CombatCharacter[], gameMap: GameMap): 
 
 export const selectTarget = (attacker: CombatCharacter, characters: CombatCharacter[]): CombatCharacter | null => {
   const enemies = characters.filter(c => c.faction !== attacker.faction && c.is_conscious);
-  enemies.sort((a, b) => calculateDistance(attacker.position, a.position) - calculateDistance(attacker.position, b.position));
+  enemies.sort((a, b) => taxicabDistance(attacker.position, a.position) - taxicabDistance(attacker.position, b.position));
   return enemies[0] || null;
 }
 

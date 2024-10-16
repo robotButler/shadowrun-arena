@@ -19,7 +19,7 @@ import {
   Vector
 } from './types';
 import { GameMap, CellType } from './map';
-import { calculateDistance, roundVector } from './utils';
+import { taxicabDistance, roundVector } from './utils';
 import * as PF from 'pathfinding';
 
 const MELEE_RANGE = 2; // Melee range in meters
@@ -76,6 +76,9 @@ export const startNewCombat = (
       adjacentCoverCells: [],
       hasMoved: false,
       base_movement: character.attributes.agility * 2,
+      isRunning: false,
+      isSprinting: false,
+      hasRunThisPhase: false,
     };
   });
 
@@ -243,6 +246,23 @@ export const updateInitiative = (
   };
 };
 
+export const gridFromGameMap = (gameMap: GameMap, combatCharacters: CombatCharacter[]): PF.Grid => {
+  const grid = new PF.Grid(gameMap.width, gameMap.height);
+  gameMap.cells.forEach((cell, index) => {
+    const x = index % gameMap.width;
+    const y = Math.floor(index / gameMap.width);
+    if (cell === CellType.HardCover || cell === CellType.PartialCover) {
+      grid.setWalkableAt(x, y, false);
+    }
+  });
+  combatCharacters.forEach((char, index) => {
+    const { x, y } = roundVector(char.position);
+    grid.setWalkableAt(x, y, false);
+  });
+  return grid;
+};
+  
+
 export const handleMovement = (
   combatCharacters: CombatCharacter[],
   currentCharacterIndex: number,
@@ -268,22 +288,7 @@ export const handleMovement = (
   const updatedChars = [...combatCharacters];
 
   // Create pathfinding grid
-  const grid = new PF.Grid(gameMap.width, gameMap.height);
-  gameMap.cells.forEach((cell, index) => {
-    const x = index % gameMap.width;
-    const y = Math.floor(index / gameMap.width);
-    if (cell === CellType.HardCover || cell === CellType.PartialCover) {
-      grid.setWalkableAt(x, y, false);
-    }
-  });
-
-  // Set characters' positions as unwalkable, except for the current character
-  combatCharacters.forEach((char, index) => {
-    if (index !== currentCharacterIndex) {
-      const { x, y } = roundVector(char.position);
-      grid.setWalkableAt(x, y, false);
-    }
-  });
+  const grid = gridFromGameMap(gameMap, combatCharacters);
 
   const finder = new PF.AStarFinder();
   const startPos = roundVector(currentChar.position);
@@ -366,7 +371,7 @@ export const handleComplexAction = (
   } else if ((selectedComplexAction === 'FireWeapon' || selectedComplexAction === 'MeleeAttack') && selectedWeapon && selectedTargetId) {
     const target = combatCharacters.find(c => c.id === selectedTargetId);
     if (target) {
-      const distance = calculateDistance(currentChar.position, target.position);
+      const distance = taxicabDistance(currentChar.position, target.position, gameMap ? gridFromGameMap(gameMap, combatCharacters) : new PF.Grid(0, 0));
       
       if (selectedComplexAction === 'MeleeAttack' && distance > MELEE_RANGE) {
         if (remainingMovement >= distance - MELEE_RANGE) {
@@ -477,7 +482,7 @@ export const handleSimpleActions = (
       const targetId = selectedTargets[index]!;
       const target = combatCharacters.find(c => c.id === targetId);
       if (target) {
-        const distance = calculateDistance(currentChar.position, target.position);
+        const distance = taxicabDistance(currentChar.position, target.position, gameMap ? gridFromGameMap(gameMap, combatCharacters) : new PF.Grid(0, 0));
         const runModifier = isRunning ? RUN_OTHER_PENALTY : 0;
         const result = resolve_attack(currentChar, target, weapon, weapon.currentFireMode ?? 'SS', distance, gameMap, runModifier);
         

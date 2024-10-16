@@ -16,9 +16,10 @@ import {
   handleComplexAction,
   handleSimpleActions,
   handleFireModeChange,
-  handleRunAction as handleRunActionFromInterface
+  handleRunAction as handleRunActionFromInterface,
+  gridFromGameMap
 } from '../lib/combatInterface'
-import { calculateMaxPhysicalHealth, calculateMaxStunHealth, isCharacterAlive, isCharacterConscious, calculateDistance, getRandomEmptyPosition, roundVector, canTakeCover } from '../lib/utils'
+import { calculateMaxPhysicalHealth, calculateMaxStunHealth, taxicabDistance, getRandomEmptyPosition, roundVector, canTakeCover } from '../lib/utils'
 import {
   ActionType,
   SimpleAction,
@@ -35,6 +36,7 @@ import { GameMap, generate_map } from '../lib/map'
 import { MapDisplay } from './MapDisplay'
 import * as Tooltip from '@radix-ui/react-tooltip';
 import { rollSprinting, getSprintingDistance } from '@/lib/combatSimulation'
+import * as PF from 'pathfinding';
 
 const WeaponStatsCard = ({ character }: { character: CombatCharacter }) => (
   <Card className="mt-4">
@@ -301,7 +303,7 @@ export function CombatTab({
     return combatCharacters.some(c => 
       c.faction !== currentChar.faction && 
       c.is_conscious &&
-      calculateDistance(currentChar.position, c.position) <= 2
+      taxicabDistance(currentChar.position, c.position, gameMap ? gridFromGameMap(gameMap, combatCharacters) : new PF.Grid(0, 0)) <= 2
     );
   };
 
@@ -418,7 +420,7 @@ export function CombatTab({
           const meleeTargets = combatCharacters.filter(c => 
             c.faction !== currentChar.faction && 
             c.is_conscious &&
-            calculateDistance(currentChar.position, c.position) <= 2
+            taxicabDistance(currentChar.position, c.position, gameMap ? gridFromGameMap(gameMap, combatCharacters) : new PF.Grid(0, 0)) <= 2
           );
           defaultTarget = meleeTargets.length > 0 ? meleeTargets[0].id : null;
           
@@ -453,7 +455,7 @@ export function CombatTab({
     if (selectedComplexAction === 'MeleeAttack') {
       const attacker = combatCharacters[currentCharacterIndex];
       const target = combatCharacters.find(c => c.id === targetId);
-      if (target && calculateDistance(attacker.position, target.position) > 2) {
+      if (target && taxicabDistance(attacker.position, target.position, gameMap ? gridFromGameMap(gameMap, combatCharacters) : new PF.Grid(0, 0)) > 2) {
         setMeleeRangeError("Selected target is not within melee range.");
       } else {
         setMeleeRangeError(null);
@@ -745,7 +747,8 @@ export function CombatTab({
 
     const currentChar = combatCharacters[currentCharacterIndex];
     const roundedPosition = roundVector(position);
-    const moveDistance = Math.floor(calculateDistance(currentChar.position, roundedPosition));
+    const moveDistance = Math.floor(taxicabDistance(currentChar.position, roundedPosition, gameMap ?
+      gridFromGameMap(gameMap, combatCharacters) : new PF.Grid(0, 0)));
 
     if (moveDistance > remainingMovement) {
       toast.error("Selected position is too far away.");
@@ -901,7 +904,7 @@ export function CombatTab({
     return combatCharacters.filter(c => 
       c.faction !== currentChar.faction && 
       c.is_conscious &&
-      calculateDistance(currentChar.position, c.position) <= 2
+      taxicabDistance(currentChar.position, c.position, gameMap ? gridFromGameMap(gameMap, combatCharacters) : new PF.Grid(0, 0)) <= 2
     );
   };
 

@@ -21,5 +21,5 @@ Faction Selection:
 
 Things to check:
 - Is recoil being applied correctly to the attack roll?
-- Is reach for melee weapons working correctly?
+- Is reach for melee weapons working correctly, are the ranges for melee weapons correct?
 - Are glitches being applied for all rolls?

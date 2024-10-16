@@ -2,6 +2,7 @@ import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
 import { Attribute, Vector, CombatCharacter } from './types'  // Update this import
 import { CellType, GameMap } from './map'
+import * as PF from 'pathfinding';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -24,15 +25,15 @@ export const isCharacterConscious = (stunDamage: number, maxStunHealth: number, 
 };
 
 /**
- * Calculates the Euclidean distance between two positions.
+ * Calculates the Taxicab distance between two positions.
  * @param position1 The first position
  * @param position2 The second position
  * @returns The distance between the two positions
  */
-export const calculateDistance = (pos1: Vector, pos2: Vector): number => {
-  const dx = pos2.x - pos1.x;
-  const dy = pos2.y - pos1.y;
-  return Math.sqrt(dx * dx + dy * dy);
+export const taxicabDistance = (pos1: Vector, pos2: Vector, grid: PF.Grid): number => {
+  const finder = new PF.AStarFinder();
+  const path = finder.findPath(pos1.x, pos1.y, pos2.x, pos2.y, grid);
+  return path.length - 1;
 };
 
 export function calculatePhysicalLimit(strength: number, body: number, reaction: number): number {
