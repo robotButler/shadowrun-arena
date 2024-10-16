@@ -17,6 +17,7 @@ interface MapDisplayProps {
   placingCharacter: Character | null;
   deadCharacters: string[];
   unconsciousCharacters: string[];
+  adjacentCoverCells: Vector[]; // Add this new prop
 }
 
 export function MapDisplay({ 
@@ -30,7 +31,8 @@ export function MapDisplay({
   faction2 = [],
   placingCharacter,
   deadCharacters,
-  unconsciousCharacters
+  unconsciousCharacters,
+  adjacentCoverCells // Add this new prop
 }: MapDisplayProps) {
   const [hoveredCell, setHoveredCell] = useState<Vector | null>(null);
   const [currentPath, setCurrentPath] = useState<Vector[]>([]);
@@ -137,7 +139,9 @@ export function MapDisplay({
         return 'rgba(0, 255, 0, 0.3)'; // Light green for valid move targets
       }
     }
-
+    if (adjacentCoverCells.some(cell => cell.x === position.x && cell.y === position.y)) {
+      return 'rgba(255, 255, 0, 0.5)'; // Yellow highlight for adjacent cover
+    }
     // If we're placing a character and hovering over an empty cell, show a preview
     if (placingCharacter && hoveredCell && hoveredCell.x === position.x && hoveredCell.y === position.y && cellType === CellType.Empty) {
       return 'rgba(255, 165, 0, 0.3)'; // Light orange for character placement preview

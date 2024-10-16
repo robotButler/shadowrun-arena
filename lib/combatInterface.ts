@@ -7,7 +7,8 @@ import {
   apply_damage,
   check_combat_end,
 } from './combat';
-import { calculateMaxPhysicalHealth, calculateMaxStunHealth, isCharacterAlive, isCharacterConscious, calculate_wound_modifier, canTakeCover, isAdjacentToCover } from './utils';
+import { calculateMaxPhysicalHealth, calculateMaxStunHealth, isCharacterAlive, isCharacterConscious, calculate_wound_modifier,
+  canTakeCover, getIntersectedCoverCells } from './utils';
 import {
   ActionType,
   SimpleAction,
@@ -530,7 +531,7 @@ export const handleSimpleActions = (
         updatedChars[currentCharacterIndex] = {
           ...updatedChars[currentCharacterIndex],
           isTakingCover: true,
-          adjacentCoverCells: isAdjacentToCover(currentChar, gameMap),
+          adjacentCoverCells: getIntersectedCoverCells(currentChar, gameMap, opponents),
           hasMoved: false,
         };
         actionLog.push({ summary: `${currentChar.name} took cover.`, details: [] });

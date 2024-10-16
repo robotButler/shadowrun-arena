@@ -210,41 +210,48 @@ export function isAdjacentToCover(character: CombatCharacter, gameMap: GameMap):
   return adjacentCells;
 }
 
+export function getIntersectedCoverCells(character: CombatCharacter, gameMap: GameMap, opponents: CombatCharacter[]): Vector[] {
+  const intersectedCells: Vector[] = [];
+  const adjacentCoverCells = isAdjacentToCover(character, gameMap);
+  const result: Vector[] = [];
+
+  if (adjacentCoverCells.length === 0) {
+    console.log("No adjacent cover cells found");
+    return [];
+  }
+  for (const opponent of opponents) {
+    console.log("Opponent position:", opponent.position);
+    console.log("Character position:", character.position);
+    const innerIntersectedCells = getIntersectedCells(character.position, opponent.position);
+    intersectedCells.push(...innerIntersectedCells);
+  }
+
+  console.log("Intersected cells:", intersectedCells);
+  console.log("adjacentCoverCells:", adjacentCoverCells);
+  for (const cell of intersectedCells) {
+    if (adjacentCoverCells.some(coverCell => coverCell.x === cell.x && coverCell.y === cell.y)) {
+      console.log("Adding cell to result:", cell);
+      result.push(cell);
+    }
+  }
+
+  return result;
+}
+
 export function canTakeCover(character: CombatCharacter, gameMap: GameMap, opponents: CombatCharacter[]): boolean {
   if (!gameMap) {
     console.error("Game map is undefined in canTakeCover");
     return false;
   }
 
-  console.log("Checking if character can take cover:", character.name);
-  console.log("Character position:", character.position);
-  console.log("Game map dimensions:", gameMap.width, "x", gameMap.height);
-
-  const adjacentCoverCells = isAdjacentToCover(character, gameMap);
-  console.log("Adjacent cover cells:", adjacentCoverCells);
-
-  if (adjacentCoverCells.length === 0) {
-    console.log("No adjacent cover cells found");
+  const intersectedCoverCells = getIntersectedCoverCells(character, gameMap, opponents);
+  if (intersectedCoverCells.length === 0) {
+    console.log("No intersecting cover cells found");
     return false;
   }
 
-  for (const opponent of opponents) {
-    console.log("Checking against opponent:", opponent.name);
-    console.log("Opponent position:", opponent.position);
-
-    const intersectedCells = getIntersectedCells(character.position, opponent.position);
-    console.log("Intersected cells:", intersectedCells);
-
-    for (const cell of intersectedCells) {
-      if (adjacentCoverCells.some(coverCell => coverCell.x === cell.x && coverCell.y === cell.y)) {
-        console.log("Found intersecting cover cell:", cell);
-        return true;
-      }
-    }
-  }
-
-  console.log("No suitable cover found");
-  return false;
+  console.log("Intersected cover cells:", intersectedCoverCells);
+  return true;
 }
 
 export function getCoverBonus(attacker: CombatCharacter, defender: CombatCharacter, gameMap: GameMap): number {

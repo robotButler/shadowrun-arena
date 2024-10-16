@@ -19,7 +19,8 @@ import {
   handleRunAction as handleRunActionFromInterface,
   gridFromGameMap
 } from '../lib/combatInterface'
-import { calculateMaxPhysicalHealth, calculateMaxStunHealth, taxicabDistance, getRandomEmptyPosition, roundVector, canTakeCover } from '../lib/utils'
+import { calculateMaxPhysicalHealth, calculateMaxStunHealth, taxicabDistance,
+  getRandomEmptyPosition, roundVector, canTakeCover, getIntersectedCoverCells } from '../lib/utils'
 import {
   ActionType,
   SimpleAction,
@@ -116,6 +117,7 @@ export function CombatTab({
   const [runningCharacters, setRunningCharacters] = useState<Set<string>>(new Set());
   const [sprintingCharacters, setSprintingCharacters] = useState<Set<string>>(new Set());
   const [sprintBonuses, setSprintBonuses] = useState<Record<string, number>>({});
+  const [adjacentCoverCells, setAdjacentCoverCells] = useState<Vector[]>([]);
 
   // Add this function near the top of your component, after the state declarations
   const isActionDisabled = () => {
@@ -181,6 +183,11 @@ export function CombatTab({
       const opponents = combatCharacters.filter(c => c.faction !== currentChar.faction && c.is_conscious);
       const canTakeCoverResult = canTakeCover(currentChar, gameMap, opponents);
       setCanUseTakeCover(canTakeCoverResult);
+
+      // Calculate adjacent cover cells
+      const adjacentCover = getIntersectedCoverCells(currentChar, gameMap, opponents);
+      console.log("Adjacent cover cells Use Effect:", adjacentCover);
+      setAdjacentCoverCells(adjacentCover);
     }
   }, [combatCharacters, currentCharacterIndex, gameMap]);
 
@@ -1029,12 +1036,13 @@ export function CombatTab({
                   <MapDisplay 
                     map={gameMap} 
                     onCellClick={handleMapCellClick}
-                    deadCharacters={[]} // Add this line
-                    unconsciousCharacters={[]} // Add this line
+                    deadCharacters={[]}
+                    unconsciousCharacters={[]}
                     placedCharacters={placedCharacters}
                     faction1={faction1}
                     faction2={faction2}
                     placingCharacter={placingCharacter}
+                    adjacentCoverCells={adjacentCoverCells}
                   />
                 )}
               </div>
@@ -1397,6 +1405,7 @@ export function CombatTab({
                     faction2={faction2}
                     deadCharacters={deadCharacters}
                     unconsciousCharacters={unconsciousCharacters}
+                    adjacentCoverCells={adjacentCoverCells} // Add this new prop
                   />
                 </div>
                 {actionLog.length > 0 && (

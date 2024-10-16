@@ -1,7 +1,6 @@
 Tasks remaining:
 Combat:
 
-20. Highlight cover cells adjacent to the current character if they can be used for cover.
 21. Remove the "Simulation" tab.
 
 Large:
