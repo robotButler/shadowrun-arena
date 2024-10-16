@@ -1,11 +1,9 @@
 Tasks remaining:
 Combat:
 
-Small:
-15. When a character moves the full distance allowed, disable the Select Move Target button.
-
-Medium:
-- Highlight cover cells adjacent to the current character if they are in a path to an opposing character
+19. When a character selects Run, whatever bonus is applied to their max movement should also be applied to their remaining movement for the round.
+20. Highlight cover cells adjacent to the current character if they can be used for cover.
+21. Remove the "Simulation" tab.
 
 Large:
 - Separate taking actions from ending the turn. 

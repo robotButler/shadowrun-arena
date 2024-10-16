@@ -89,15 +89,11 @@ export function CombatTab({
   const [selectedComplexAction, setSelectedComplexAction] = useState<ComplexAction | null>(null);
   const [selectedWeapons, setSelectedWeapons] = useState<(Weapon | null)[]>([null, null]);
   const [selectedTargets, setSelectedTargets] = useState<(string | null)[]>([null, null]);
-  const [movementDistance, setMovementDistance] = useState(0);
-  const [movementDirection, setMovementDirection] = useState<'Toward' | 'Away'>('Toward');
   const [actionLog, setActionLog] = useState<{ summary: string, details: string[] }[]>([]);
   const [selectedFreeAction, setSelectedFreeAction] = useState<'CallShot' | 'ChangeFireMode' | null>(null);
-  const [roundNumber, setRoundNumber] = useState(1);
   const [initialInitiatives, setInitialInitiatives] = useState<Record<string, number>>({});
   const [remainingMovement, setRemainingMovement] = useState<number>(0);
   const [meleeRangeError, setMeleeRangeError] = useState<string | null>(null);
-  const [movementRemaining, setMovementRemaining] = useState(0);
   const [mapSize, setMapSize] = useState<Vector>({ x: 35, y: 35 });
   const [partialCoverProb, setPartialCoverProb] = useState(0.05);
   const [hardCoverProb, setHardCoverProb] = useState(0.05);
@@ -113,11 +109,8 @@ export function CombatTab({
   const [currentInitiativeOrder, setCurrentInitiativeOrder] = useState<{ char: CombatCharacter, phase: number }[]>([]);
   const [deadCharacters, setDeadCharacters] = useState<string[]>([]);
   const [unconsciousCharacters, setUnconsciousCharacters] = useState<string[]>([]);
-  const [sprintBonus, setSprintBonus] = useState<number | null>(null);
-  const [mostRecentLog, setMostRecentLog] = useState<{ summary: string, details: string[] } | null>(null);
   const [runModifier, setRunModifier] = useState(0);
   const [canUseTakeCover, setCanUseTakeCover] = useState(false);
-  const [lastTwoActions, setLastTwoActions] = useState<{ summary: string, details: string[] }[]>([]);
   const [runningCharacters, setRunningCharacters] = useState<Set<string>>(new Set());
   const [sprintingCharacters, setSprintingCharacters] = useState<Set<string>>(new Set());
   const [sprintBonuses, setSprintBonuses] = useState<Record<string, number>>({});
@@ -254,7 +247,6 @@ export function CombatTab({
     setCurrentCharacterIndex(result.currentCharacterIndex);
     setActionLog(result.actionLog);
     clearInputs();
-    setRoundNumber(1);
     setIsCombatActive(true);
     setCombatEnded(false);
     
@@ -469,28 +461,47 @@ export function CombatTab({
     }
   };
 
-  const handleMovementHandler = () => {
-    if (movementDistance === 0) {
-      toast.error('Please enter a movement distance');
+  const handleMovementHandler = (moveTo: Vector) => {
+    if (!gameMap) {
+      toast.error('Game map is not initialized');
       return;
     }
-
     const currentChar = combatCharacters[currentCharacterIndex];
     const isRunning = runningCharacters.has(currentChar.id);
 
     const { updatedCharacters, actionLog, remainingDistance } = handleMovement(
       combatCharacters,
       currentCharacterIndex,
-      movementDistance,
-      movementDirection,
-      isRunning
+      moveTo,
+      isRunning,
+      gameMap
     );
     setCombatCharacters(updatedCharacters);
     updateActionLog(actionLog);
     setRemainingMovement(remainingDistance);
     setMaxMoveDistance(getMaxMoveDistance(updatedCharacters[currentCharacterIndex]));
-    setHasMovedWhileRunning(isRunning);
-    setMovementDistance(0);
+    // setHasMovedWhileRunning(isRunning);
+
+    // setIsSelectingMoveTarget(false);
+    // updateActionLog({ 
+    //   summary: `${currentChar.name} moved ${moveDistance} meters.`, 
+    //   details: [`New position: (${roundedPosition.x}, ${roundedPosition.y})`, `Remaining movement: ${remainingMovement - moveDistance} meters`] 
+    // });
+
+    // Update placedCharacters immediately after moving
+    // setPlacedCharacters(prevPlaced => {
+    //   const updatedPlaced = [...prevPlaced];
+    //   const index = updatedPlaced.findIndex(pc => pc.character.id === currentChar.id);
+    //   if (index !== -1) {
+    //     updatedPlaced[index] = { ...updatedPlaced[index], position: roundedPosition };
+    //   }
+    //   return updatedPlaced;
+    // });
+
+    // Set hasMovedWhileRunning to true if the character is running
+    // if (runningCharacters.has(currentChar.id)) {
+    //   setHasMovedWhileRunning(true);
+    // }
   };
 
   const handleComplexActionHandler = () => {
@@ -628,8 +639,6 @@ export function CombatTab({
     setSelectedComplexAction(null);
     setSelectedWeapons([null, null]);
     setSelectedTargets([null, null]);
-    setMovementDistance(0);
-    setMovementDirection('Toward');
     setSelectedFreeAction(null);
     // Don't reset isRunning here, as it's now handled in nextCharacter
   };
@@ -752,33 +761,26 @@ export function CombatTab({
       toast.error("Cannot move to a cell occupied by another character.");
       return;
     }
+    handleMovementHandler(roundedPosition);
 
-    setCombatCharacters(prevChars => {
-      const updatedChars = [...prevChars];
-      updatedChars[currentCharacterIndex] = {
-        ...updatedChars[currentCharacterIndex],
-        position: roundedPosition,
-        movement_remaining: updatedChars[currentCharacterIndex].movement_remaining - moveDistance
-      };
-      return updatedChars;
-    });
 
     setIsSelectingMoveTarget(false);
-    setRemainingMovement(prev => prev - moveDistance);
-    updateActionLog({ 
-      summary: `${currentChar.name} moved ${moveDistance} meters.`, 
-      details: [`New position: (${roundedPosition.x}, ${roundedPosition.y})`, `Remaining movement: ${remainingMovement - moveDistance} meters`] 
-    });
+    // setRemainingMovement(prev => prev - moveDistance);
+    // console.log("handleMapClick: Remaining movement:", remainingMovement);
+    // updateActionLog({ 
+    //   summary: `${currentChar.name} moved ${moveDistance} meters.`, 
+    //   details: [`New position: (${roundedPosition.x}, ${roundedPosition.y})`, `Remaining movement: ${remainingMovement - moveDistance} meters`] 
+    // });
 
-    // Update placedCharacters immediately after moving
-    setPlacedCharacters(prevPlaced => {
-      const updatedPlaced = [...prevPlaced];
-      const index = updatedPlaced.findIndex(pc => pc.character.id === currentChar.id);
-      if (index !== -1) {
-        updatedPlaced[index] = { ...updatedPlaced[index], position: roundedPosition };
-      }
-      return updatedPlaced;
-    });
+    // // Update placedCharacters immediately after moving
+    // setPlacedCharacters(prevPlaced => {
+    //   const updatedPlaced = [...prevPlaced];
+    //   const index = updatedPlaced.findIndex(pc => pc.character.id === currentChar.id);
+    //   if (index !== -1) {
+    //     updatedPlaced[index] = { ...updatedPlaced[index], position: roundedPosition };
+    //   }
+    //   return updatedPlaced;
+    // });
 
     // Set hasMovedWhileRunning to true if the character is running
     if (runningCharacters.has(currentChar.id)) {
@@ -858,7 +860,7 @@ export function CombatTab({
     if (!currentChar?.is_alive || !currentChar?.is_conscious) {
       return "Current character is incapacitated and cannot act.";
     }
-    if (!selectedActionType && !selectedFreeAction && movementDistance === 0 && !selectedSimpleActions.some(action => action !== null)) {
+    if (!selectedActionType && !selectedFreeAction && !selectedSimpleActions.some(action => action !== null)) {
       return "Please select an action type, enter a movement distance, choose a free action, or select at least one simple action.";
     }
     return null; // Not disabled
@@ -1354,8 +1356,6 @@ export function CombatTab({
                               updateActionLog({ summary: `${currentChar.name} performed a ${selectedFreeAction} action.`, details: [] });
                               clearInputs();
                               nextCharacter();
-                            } else if (movementDistance > 0) {
-                              handleMovementHandler();
                             } else {
                               console.log("No action selected");
                             }

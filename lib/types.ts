@@ -73,7 +73,8 @@ export interface CombatCharacter extends Character {
   hasMoved: boolean;
   isRunning: boolean;
   isSprinting: boolean;
-  hasRunThisPhase: boolean; // Add this new property
+  hasRunThisPhase: boolean;
+  base_movement: number; // Add this new property
   // Methods
   updateStatus(): void;
   getStatusChanges(): string[];

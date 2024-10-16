@@ -18,8 +18,9 @@ import {
   Character,
   Vector
 } from './types';
-import { GameMap } from './map';
-import { calculateDistance } from './utils';
+import { GameMap, CellType } from './map';
+import { calculateDistance, roundVector } from './utils';
+import * as PF from 'pathfinding';
 
 const MELEE_RANGE = 2; // Melee range in meters
 
@@ -74,6 +75,7 @@ export const startNewCombat = (
       isTakingCover: false,
       adjacentCoverCells: [],
       hasMoved: false,
+      base_movement: character.attributes.agility * 2,
     };
   });
 
@@ -162,7 +164,8 @@ export const createCombatCharacter = (
     }
 
     return statusChanges;
-  }
+  },
+  base_movement: character.attributes.agility * 2,
 });
 
 export const updateInitiative = (
@@ -187,19 +190,14 @@ export const updateInitiative = (
   if (currentChar.current_initiative <= 0) {
     // Reset initiative to initial value minus wound modifier
     currentChar.current_initiative = Math.max(0, initialInitiatives[currentChar.id] - woundModifier);
-    
-    // Reset movement and running/sprinting status
-    currentChar.movement_remaining = currentChar.attributes.agility * 2;
-    currentChar.isRunning = false;
-    currentChar.isSprinting = false;
-    currentChar.hasRunThisPhase = false; // Reset the run flag
   }
-
-  // Reset action selections for all characters
+  
+  // Reset movement and running/sprinting status for all characters
   updatedCharacters.forEach(char => {
+    char.movement_remaining = char.base_movement;
     char.isRunning = false;
     char.isSprinting = false;
-    // Reset any other action-related flags here
+    char.hasRunThisPhase = false;
   });
 
   // Find the character with the highest initiative
@@ -239,7 +237,7 @@ export const updateInitiative = (
         `${currentChar.name}'s initiative decreased to ${currentChar.current_initiative}`,
         `Wound modifier applied: -${woundModifier}`,
         `New initiative phase: ${newInitiativePhase}`,
-        `All action selections reset for the next turn`
+        `All characters' movement reset for the next turn`
       ]
     }
   };
@@ -248,62 +246,76 @@ export const updateInitiative = (
 export const handleMovement = (
   combatCharacters: CombatCharacter[],
   currentCharacterIndex: number,
-  movementDistance: number,
-  movementDirection: 'Toward' | 'Away',
-  isRunning: boolean = false
+  moveTo: Vector,
+  isRunning: boolean = false,
+  gameMap: GameMap
 ): {
   updatedCharacters: CombatCharacter[],
   actionLog: { summary: string, details: string[] },
   remainingDistance: number
 } => {
+  console.log("handleMovement called with:", {
+    currentCharacterIndex,
+    moveTo,
+    isRunning,
+    gameMap
+  });
   const currentChar = combatCharacters[currentCharacterIndex];
-  const baseMaxDistance = currentChar.attributes.agility * 2;
-  const maxDistance = isRunning ? baseMaxDistance * 2 : baseMaxDistance;
+  const maxDistance = isRunning ? currentChar.base_movement * 2 : currentChar.base_movement;
 
-  const availableMovement = Math.max(0, currentChar.movement_remaining);
-  const actualMovementDistance = Math.min(movementDistance, availableMovement);
-
+  const availableMovement = Math.min(currentChar.movement_remaining, maxDistance);
+  
   const updatedChars = [...combatCharacters];
-  const target = updatedChars.find(c => c.faction !== currentChar.faction && c.is_conscious);
+
+  // Create pathfinding grid
+  const grid = new PF.Grid(gameMap.width, gameMap.height);
+  gameMap.cells.forEach((cell, index) => {
+    const x = index % gameMap.width;
+    const y = Math.floor(index / gameMap.width);
+    if (cell === CellType.HardCover || cell === CellType.PartialCover) {
+      grid.setWalkableAt(x, y, false);
+    }
+  });
+
+  // Set characters' positions as unwalkable, except for the current character
+  combatCharacters.forEach((char, index) => {
+    if (index !== currentCharacterIndex) {
+      const { x, y } = roundVector(char.position);
+      grid.setWalkableAt(x, y, false);
+    }
+  });
+
+  const finder = new PF.AStarFinder();
+  const startPos = roundVector(currentChar.position);
+  let endPos = roundVector(moveTo);
+
+  const path = finder.findPath(startPos.x, startPos.y, endPos.x, endPos.y, grid);
+
+  // Calculate actual movement distance
+  const actualMovementDistance = Math.min(path.length - 1, availableMovement);
   
-  if (!target) {
-    return { updatedCharacters: combatCharacters, actionLog: { summary: 'No valid target found', details: [] }, remainingDistance: currentChar.movement_remaining };
-  }
-
-  const initialDistance = calculateDistance(currentChar.position, target.position);
-  
-  // Calculate movement vector
-  const dx = target.position.x - currentChar.position.x;
-  const dy = target.position.y - currentChar.position.y;
-  const length = Math.sqrt(dx * dx + dy * dy);
-  const unitVector: Vector = { x: dx / length, y: dy / length };
-
-  // Adjust movement direction
-  const moveToward = movementDirection === 'Toward';
-  const direction: Vector = moveToward ? unitVector : { x: -unitVector.x, y: -unitVector.y };
-
-  const newPosition = updatePosition(currentChar.position, direction, actualMovementDistance);
+  // Get new position
+  const newPosition = actualMovementDistance > 0 ? { x: path[actualMovementDistance][0], y: path[actualMovementDistance][1] } : startPos;
 
   updatedChars[currentCharacterIndex] = {
     ...currentChar,
     position: newPosition,
-    movement_remaining: currentChar.movement_remaining - actualMovementDistance,
-    isTakingCover: false, // Reset cover when moving
-    hasMoved: true, // Mark that the character has moved
+    movement_remaining: Math.max(0, currentChar.movement_remaining - actualMovementDistance),
+    isTakingCover: false,
+    hasMoved: true,
   };
 
-  const newDistance = calculateDistance(newPosition, target.position);
-  const actualMovement = Math.abs(initialDistance - newDistance);
+  const newDistance = path.length;
   const remainingDistance = updatedChars[currentCharacterIndex].movement_remaining;
 
   return {
     updatedCharacters: updatedChars,
     actionLog: { 
-      summary: `${currentChar.name} ${isRunning ? "ran" : "moved"} ${actualMovement.toFixed(2)} meters ${movementDirection.toLowerCase()} the opposing faction.`,
+      summary: `${currentChar.name} ${isRunning ? "ran" : "moved"} ${actualMovementDistance} meters.`,
       details: [
         `New position: (${newPosition.x.toFixed(2)}, ${newPosition.y.toFixed(2)})`,
         `New distance to target: ${newDistance.toFixed(2)} meters`,
-        `Remaining movement: ${remainingDistance.toFixed(2)} meters`,
+        `Remaining movement: ${remainingDistance} meters`,
         isRunning ? `Running used as a Free Action` : '',
         `Lost cover bonus due to movement`
       ].filter(Boolean)
@@ -652,7 +664,7 @@ export const handleRunAction = (character: CombatCharacter, isCurrentlyRunning: 
         }
       };
     }
-    updatedCharacter.movement_remaining *= 2;
+    // Instead of setting movement_remaining, we'll just set isRunning to true
     updatedCharacter.isRunning = true;
     updatedCharacter.hasRunThisPhase = true;
     return {
@@ -660,21 +672,20 @@ export const handleRunAction = (character: CombatCharacter, isCurrentlyRunning: 
       actionLog: {
         summary: `${character.name} started running.`,
         details: [
-          `Movement doubled: ${updatedCharacter.movement_remaining} meters`,
+          `Movement doubled for this turn`,
           `Run Modifier applied`
         ]
       }
     };
   } else {
     // Stop running
-    updatedCharacter.movement_remaining = Math.floor(updatedCharacter.movement_remaining / 2);
     updatedCharacter.isRunning = false;
     return {
       updatedCharacter,
       actionLog: {
         summary: `${character.name} stopped running.`,
         details: [
-          `Movement reverted: ${updatedCharacter.movement_remaining} meters`,
+          `Movement returned to normal`,
           `Run Modifier removed`
         ]
       }
