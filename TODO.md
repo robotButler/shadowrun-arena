@@ -1,7 +1,6 @@
 Tasks remaining:
 Combat:
 
-21. Remove the "Simulation" tab.
 
 Large:
 - Separate taking actions from ending the turn. 
@@ -16,6 +15,7 @@ Large:
 Faction Selection:
 - When a character is selected for a faction, they should not appear in the other faction's available characters
 
+22. Implement the "Call Shot" action.
 
 Things to check:
 - Is recoil being applied correctly to the attack roll?

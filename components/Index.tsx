@@ -12,7 +12,6 @@ import {
 } from '@/lib/characterManagement'
 import { CharacterManagement } from './CharacterManagement'
 import { CombatTab } from './CombatTab'
-import { SimulationsTab } from './SimulationsTab'
 
 export function ShadowrunArena() {
   const [characters, setCharacters] = useState<Character[]>([])
@@ -52,8 +51,8 @@ export function ShadowrunArena() {
     <div className="container mx-auto p-4">
       <h1 className="text-3xl font-bold text-center mb-6">Shadowrun 5e Arena</h1>
       <Tabs defaultValue="characters">
-        <TabsList className="grid w-full grid-cols-3 mb-4">
-          {["characters", "combat", "simulations"].map((tab) => (
+        <TabsList className="grid w-full grid-cols-2 mb-4">
+          {["characters", "combat"].map((tab) => (
             <TabsTrigger
               key={tab}
               value={tab}
@@ -77,16 +76,6 @@ export function ShadowrunArena() {
         </TabsContent>
         <TabsContent value="combat">
           <CombatTab
-            characters={characters}
-            faction1={faction1}
-            faction2={faction2}
-            factionModifiers={factionModifiers}
-            handleAddToFaction={handleAddToFaction}
-            handleRemoveFromFaction={handleRemoveFromFaction}
-          />
-        </TabsContent>
-        <TabsContent value="simulations">
-          <SimulationsTab
             characters={characters}
             faction1={faction1}
             faction2={faction2}

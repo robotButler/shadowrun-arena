@@ -44,7 +44,7 @@ export function ActionLogEntry({ summary, details }: ActionLogEntryProps) {
                 <span className="font-semibold mr-2">{rollData.name}:</span>
                 <span className="mr-2">{rollData.total}</span>
                 <span className="text-sm text-gray-600">
-                  (Base: {rollData.base} + initiative dice rolls: {rollData.dice.join(', ')})
+                  (Base: {rollData.base} + ({rollData.dice.length} initiative dice) {rollData.dice.join(', ')})
                 </span>
               </div>
             );
