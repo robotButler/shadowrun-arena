@@ -197,6 +197,7 @@ export const updateInitiative = (
   
   // Reset movement and running/sprinting status for all characters
   updatedCharacters.forEach(char => {
+    char.base_movement = char.attributes.agility * 2;
     char.movement_remaining = char.base_movement;
     char.isRunning = false;
     char.isSprinting = false;
@@ -669,29 +670,33 @@ export const handleRunAction = (character: CombatCharacter, isCurrentlyRunning: 
         }
       };
     }
-    // Instead of setting movement_remaining, we'll just set isRunning to true
     updatedCharacter.isRunning = true;
     updatedCharacter.hasRunThisPhase = true;
+    // Apply the run bonus to both max movement and remaining movement
+    const runBonus = updatedCharacter.base_movement;
+    updatedCharacter.movement_remaining += runBonus;
     return {
       updatedCharacter,
       actionLog: {
         summary: `${character.name} started running.`,
         details: [
           `Movement doubled for this turn`,
-          `Run Modifier applied`
+          `Run Modifier applied`,
+          `Remaining movement increased by ${runBonus} meters`
         ]
       }
     };
   } else {
     // Stop running
     updatedCharacter.isRunning = false;
+    // We don't reduce the remaining movement when stopping running
     return {
       updatedCharacter,
       actionLog: {
         summary: `${character.name} stopped running.`,
         details: [
-          `Movement returned to normal`,
-          `Run Modifier removed`
+          `Run Modifier removed`,
+          `Remaining movement unchanged`
         ]
       }
     };

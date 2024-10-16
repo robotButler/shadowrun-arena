@@ -1,7 +1,6 @@
 Tasks remaining:
 Combat:
 
-19. When a character selects Run, whatever bonus is applied to their max movement should also be applied to their remaining movement for the round.
 20. Highlight cover cells adjacent to the current character if they can be used for cover.
 21. Remove the "Simulation" tab.
 
