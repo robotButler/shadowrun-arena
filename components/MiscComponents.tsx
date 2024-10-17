@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { ChevronDown, ChevronUp } from 'lucide-react'
-import { ActionLogEntryProps, SimulationResultProps, FactionSelectorProps, Character, MatchResult } from '../lib/types'
+import { ActionLogEntryProps, SimulationResultProps, Character, MatchResult } from '../lib/types'
 
 export const highlightDice = (diceRoll: string) => {
   return diceRoll.split(', ').map((die, index) => {
@@ -118,6 +118,18 @@ export const SimulationResult = ({ result, index }: SimulationResultProps) => {
   );
 };
 
+// Update the FactionSelectorProps interface
+interface FactionSelectorProps {
+  faction: 'faction1' | 'faction2'
+  characters: Character[]
+  factionMembers: string[]
+  factionModifiers: Record<string, number>
+  onAddToFaction: (characterId: string, faction: 'faction1' | 'faction2') => void
+  onRemoveFromFaction: (characterId: string, faction: 'faction1' | 'faction2') => void
+  onModifierChange: (characterId: string, value: number) => void
+  otherFactionMembers: string[] // Add this new prop
+}
+
 export const FactionSelector = ({ 
   faction, 
   characters, 
@@ -125,48 +137,56 @@ export const FactionSelector = ({
   factionModifiers, 
   onAddToFaction, 
   onRemoveFromFaction, 
-  onModifierChange 
-}: FactionSelectorProps) => (
-  <div>
-    <h3 className="mb-2 font-semibold">Faction {faction === 'faction1' ? '1' : '2'}</h3>
-    <ScrollArea className="h-[300px] w-full rounded-md border p-4">
-      {characters.map(character => (
-        <div 
-          key={character.id} 
-          className={`flex items-center justify-between mb-2 p-2 rounded ${
-            factionMembers.includes(character.id) 
-              ? 'bg-green-100' 
-              : ''
-          }`}
-        >
-          <span>{character.name}</span>
-          {factionMembers.includes(character.id) ? (
-            <div className="flex items-center space-x-2">
-              <Label htmlFor={`modifier-${character.id}`} className="mr-2">Situational Modifier:</Label>
-              <Select
-                value={factionModifiers[character.id]?.toString() || '0'}
-                onValueChange={(value) => onModifierChange(character.id, parseInt(value))}
-              >
-                <SelectTrigger className="w-[100px]" id={`modifier-${character.id}`}>
-                  <SelectValue placeholder="Modifier" />
-                </SelectTrigger>
-                <SelectContent>
-                  {Array.from({ length: 19 }, (_, i) => i - 9).map(value => (
-                    <SelectItem key={value} value={value.toString()}>{value > 0 ? `+${value}` : value}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button variant="outline" size="sm" onClick={() => onRemoveFromFaction(character.id, faction)}>
-                Remove
+  onModifierChange,
+  otherFactionMembers // Add this new prop
+}: FactionSelectorProps) => {
+  // Filter out characters that are already in the other faction
+  const availableCharacters = characters.filter(
+    character => !otherFactionMembers.includes(character.id)
+  )
+
+  return (
+    <div>
+      <h3 className="mb-2 font-semibold">Faction {faction === 'faction1' ? '1' : '2'}</h3>
+      <ScrollArea className="h-[300px] w-full rounded-md border p-4">
+        {availableCharacters.map(character => (
+          <div 
+            key={character.id} 
+            className={`flex items-center justify-between mb-2 p-2 rounded ${
+              factionMembers.includes(character.id) 
+                ? 'bg-green-100' 
+                : ''
+            }`}
+          >
+            <span>{character.name}</span>
+            {factionMembers.includes(character.id) ? (
+              <div className="flex items-center space-x-2">
+                <Label htmlFor={`modifier-${character.id}`} className="mr-2">Situational Modifier:</Label>
+                <Select
+                  value={factionModifiers[character.id]?.toString() || '0'}
+                  onValueChange={(value) => onModifierChange(character.id, parseInt(value))}
+                >
+                  <SelectTrigger className="w-[100px]" id={`modifier-${character.id}`}>
+                    <SelectValue placeholder="Modifier" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Array.from({ length: 19 }, (_, i) => i - 9).map(value => (
+                      <SelectItem key={value} value={value.toString()}>{value > 0 ? `+${value}` : value}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button variant="outline" size="sm" onClick={() => onRemoveFromFaction(character.id, faction)}>
+                  Remove
+                </Button>
+              </div>
+            ) : (
+              <Button variant="outline" size="sm" onClick={() => onAddToFaction(character.id, faction)}>
+                Add
               </Button>
-            </div>
-          ) : (
-            <Button variant="outline" size="sm" onClick={() => onAddToFaction(character.id, faction)}>
-              Add
-            </Button>
-          )}
-        </div>
-      ))}
-    </ScrollArea>
-  </div>
-);
+            )}
+          </div>
+        ))}
+      </ScrollArea>
+    </div>
+  );
+};

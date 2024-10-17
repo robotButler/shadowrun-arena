@@ -4,9 +4,6 @@
   - Rename the Perform Action button to End Turn and make it always active.
   - When the player selects a Simple Action or a Complex Action, show a button underneath it to Take Action.
 
-10. Faction Selection:
-- When a character is selected for a faction, they should not appear in the other faction's available characters
-
 22. Implement the "Call Shot" action.
 
 40. I got this action log entry: ```

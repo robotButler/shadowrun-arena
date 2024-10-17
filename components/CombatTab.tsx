@@ -1010,6 +1010,7 @@ export function CombatTab({
               onAddToFaction={handleAddToFaction}
               onRemoveFromFaction={handleRemoveFromFaction}
               onModifierChange={(characterId, value) => {}}
+              otherFactionMembers={faction2} // Add this line
             />
             <FactionSelector
               faction="faction2"
@@ -1019,6 +1020,7 @@ export function CombatTab({
               onAddToFaction={handleAddToFaction}
               onRemoveFromFaction={handleRemoveFromFaction}
               onModifierChange={(characterId, value) => {}}
+              otherFactionMembers={faction1} // Add this line
             />
           </div>
         </CardContent>
@@ -1336,6 +1338,8 @@ export function CombatTab({
                                           key={target.id}
                                           variant={selectedTargets[index] === target.id ? 'default' : 'outline'}
                                           onClick={() => handleTargetSelection(target.id, index)}
+                                          // Disable the button if the target is not in getValidRangedTargets
+                                          disabled={selectedWeapons[index] != null && !getValidRangedTargets(combatCharacters[currentCharacterIndex], selectedWeapons[index] as Weapon).includes(target)}
                                           className="w-full"
                                         >
                                           {target.name}
@@ -1408,6 +1412,7 @@ export function CombatTab({
                                   variant={selectedTargets[0] === target.id ? 'default' : 'outline'}
                                   onClick={() => handleTargetSelection(target.id, 0)}
                                   className="w-full"
+                                  disabled={selectedWeapons[0] != null && !getValidRangedTargets(combatCharacters[currentCharacterIndex], selectedWeapons[0] as Weapon).includes(target)}
                                 >
                                   {target.name}
                                 </Button>
