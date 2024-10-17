@@ -1,9 +1,19 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { GameMap, CellType } from '../lib/map';
-import { Character, Vector, CombatCharacter } from '../lib/types';
+import { Character, Vector, CombatCharacter, Weapon } from '../lib/types';
 import { Bed, BrickWall, Ghost, X } from 'lucide-react';
 import * as PF from 'pathfinding';
-import { roundVector } from '../lib/utils';
+import { roundVector, getIntersectedCells } from '../lib/utils';
+import { getRangeCategory } from '../lib/combat';
+
+// Update the RangedLine interface
+interface RangedLine {
+  start: Vector;
+  end: Vector;
+  color: string;
+  hasHardCover: boolean;
+  hardCoverPosition?: Vector;
+}
 
 interface MapDisplayProps {
   map: GameMap;
@@ -37,6 +47,7 @@ export function MapDisplay({
   const [hoveredCell, setHoveredCell] = useState<Vector | null>(null);
   const [currentPath, setCurrentPath] = useState<Vector[]>([]);
   const [validMoveTargets, setValidMoveTargets] = useState<Vector[]>([]);
+  const [rangedLines, setRangedLines] = useState<RangedLine[]>([]);
 
   const cellSize = 20;
 
@@ -106,6 +117,66 @@ export function MapDisplay({
       setCurrentPath([]);
     }
   }, [currentCharacter, isSelectingMoveTarget, hoveredCell, pfGrid, finder]);
+
+  useEffect(() => {
+    if (currentCharacter) {
+      console.log("Current character:", currentCharacter);
+      const newRangedLines: RangedLine[] = [];
+      const currentFaction = faction1.includes(currentCharacter.id) ? faction1 : faction2;
+      const opposingFaction = currentFaction === faction1 ? faction2 : faction1;
+
+      const rangedWeapons = currentCharacter.weapons.filter(w => w.type === 'Ranged');
+      console.log("Ranged weapons:", rangedWeapons);
+
+      if (rangedWeapons.length > 0) {
+        opposingFaction.forEach(opponentId => {
+          const opponent = placedCharacters.find(pc => pc.character.id === opponentId);
+          if (opponent) {
+            rangedWeapons.forEach(weapon => {
+              const line = calculateRangedLine(currentCharacter.position, opponent.position, weapon, map);
+              if (line) {
+                newRangedLines.push(line);
+              }
+            });
+          }
+        });
+      }
+
+      console.log("New ranged lines:", newRangedLines);
+      setRangedLines(newRangedLines);
+    }
+  }, [currentCharacter, placedCharacters, map, faction1, faction2]);
+
+  const calculateRangedLine = (start: Vector, end: Vector, weapon: Weapon, gameMap: GameMap): RangedLine | null => {
+    const distance = Math.sqrt(Math.pow(end.x - start.x, 2) + Math.pow(end.y - start.y, 2));
+    const { category, modifier } = getRangeCategory(weapon, distance);
+
+    const intersectedCells = getIntersectedCells(start, end);
+    const hardCoverCell = intersectedCells.find(cell => 
+      gameMap.cells[cell.y * gameMap.width + cell.x] === CellType.HardCover
+    );
+
+    let color;
+    switch (category) {
+      case 'Short': color = 'green'; break;
+      case 'Medium': color = 'yellow'; break;
+      case 'Long': color = 'orange'; break;
+      case 'Extreme': color = 'red'; break;
+      default: color = 'gray';
+    }
+
+    if (hardCoverCell) {
+      return {
+        start,
+        end: hardCoverCell,
+        color: 'red',
+        hasHardCover: true,
+        hardCoverPosition: hardCoverCell
+      };
+    }
+
+    return { start, end, color, hasHardCover: false };
+  };
 
   const getCellColor = (cellType: CellType, position: Vector) => {
     const character = placedCharacters.find(pc => pc.position.x === position.x && pc.position.y === position.y);
@@ -267,6 +338,21 @@ export function MapDisplay({
               </foreignObject>
             )}
           </g>
+        );
+      })}
+      {rangedLines.map((line, index) => {
+        console.log("Rendering line:", line);
+        return (
+          <line
+            key={index}
+            x1={line.start.x * cellSize + cellSize / 2}
+            y1={line.start.y * cellSize + cellSize / 2}
+            x2={line.end.x * cellSize + cellSize / 2}
+            y2={line.end.y * cellSize + cellSize / 2}
+            stroke={line.color}
+            strokeWidth="2"
+            opacity="0.5"
+          />
         );
       })}
     </svg>

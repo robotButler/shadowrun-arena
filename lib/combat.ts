@@ -97,50 +97,25 @@ const rangeTable: { [key in WeaponType]: number[][] } = {
 
 const rangeModifiers = [0, -1, -3, -6];
 
-function getRangeCategory(weapon: Weapon, distance: number, strength?: number): { category: string, modifier: number } {
-  const weaponType = weapon.weaponType;
-  let ranges: number[][];
-
-  if (
-    weaponType === WeaponType.Bow ||
-    weaponType === WeaponType.ThrowingKnife ||
-    weaponType === WeaponType.Shuriken ||
-    weaponType === WeaponType.StandardGrenade ||
-    weaponType === WeaponType.AerodynamicGrenade
-  ) {
-    if (!strength) {
-      throw new Error("Strength is required for this weapon type.");
-    }
-    // Calculate dynamic ranges based on Strength
-    switch (weaponType) {
-      case WeaponType.Bow:
-        ranges = [[0, strength], [strength + 1, strength * 10], [strength * 10 + 1, strength * 30], [strength * 30 + 1, strength * 60]];
-        break;
-      case WeaponType.ThrowingKnife:
-        ranges = [[0, strength], [strength + 1, strength * 2], [strength * 2 + 1, strength * 3], [strength * 3 + 1, strength * 5]];
-        break;
-      case WeaponType.Shuriken:
-        ranges = [[0, strength], [strength + 1, strength * 2], [strength * 2 + 1, strength * 5], [strength * 5 + 1, strength * 7]];
-        break;
-      case WeaponType.StandardGrenade:
-        ranges = [[1, strength * 2], [strength * 2 + 1, strength * 4], [strength * 4 + 1, strength * 6], [strength * 6 + 1, strength * 10]];
-        break;
-      case WeaponType.AerodynamicGrenade:
-        ranges = [[1, strength * 2], [strength * 2 + 1, strength * 4], [strength * 4 + 1, strength * 8], [strength * 8 + 1, strength * 15]];
-        break;
-    }
-  } else {
-    ranges = rangeTable[weaponType];
+// Add this function to the file
+export function getRangeCategory(weapon: Weapon, distance: number): { category: string, modifier: number } {
+  const ranges = rangeTable[weapon.weaponType];
+  if (!ranges) {
+    return { category: 'Out of Range', modifier: -6 };
   }
 
-  const categories = ['Short', 'Medium', 'Long', 'Extreme'];
   for (let i = 0; i < ranges.length; i++) {
-    if (distance <= ranges[i][1] && distance >= ranges[i][0]) {
+    if (distance <= ranges[i][1]) {
+      const categories = ['Short', 'Medium', 'Long', 'Extreme'];
       return { category: categories[i], modifier: rangeModifiers[i] };
     }
   }
-  return { category: 'Extreme', modifier: rangeModifiers[rangeModifiers.length - 1] };
+
+  return { category: 'Out of Range', modifier: -6 };
 }
+
+// Make sure this is also exported
+export { rangeTable, rangeModifiers };
 
 // Functions
 function roll_initiative(character: CombatCharacter): { initiative_total: number, initiative_rolls: number[] } {
@@ -334,7 +309,7 @@ function resolve_attack(
     } else {
         // Ranged attack
         const distanceInt = Math.floor(distance);
-        const { category, modifier } = getRangeCategory(weapon, distanceInt, attacker.attributes.strength);
+        const { category, modifier } = getRangeCategory(weapon, distanceInt);
         result.messages.push(`Ranged Attack: ${weapon.weaponType}, Range: ${distanceInt}m (${category}, ${modifier} modifier)`);
 
         const base_pool = attacker.attributes.agility + (attacker.skills['firearms'] || 0);

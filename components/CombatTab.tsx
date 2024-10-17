@@ -20,7 +20,7 @@ import {
   gridFromGameMap
 } from '../lib/combatInterface'
 import { calculateMaxPhysicalHealth, calculateMaxStunHealth, taxicabDistance,
-  getRandomEmptyPosition, roundVector, canTakeCover, getIntersectedCoverCells } from '../lib/utils'
+  getRandomEmptyPosition, roundVector, canTakeCover, getIntersectedCoverCells, getIntersectedCells } from '../lib/utils'
 import {
   ActionType,
   SimpleAction,
@@ -33,11 +33,12 @@ import {
 } from '../lib/types'
 import { FactionSelector } from './MiscComponents'
 import { ActionLogEntry } from './MiscComponents'
-import { GameMap, generate_map } from '../lib/map'
+import { GameMap, generate_map, CellType } from '../lib/map'
 import { MapDisplay } from './MapDisplay'
 import * as Tooltip from '@radix-ui/react-tooltip';
 import { rollSprinting, getSprintingDistance } from '@/lib/combatSimulation'
 import * as PF from 'pathfinding';
+import { getRangeCategory } from '../lib/combat';
 
 const WeaponStatsCard = ({ character }: { character: CombatCharacter }) => (
   <Card className="mt-4">
@@ -118,10 +119,20 @@ export function CombatTab({
   const [sprintingCharacters, setSprintingCharacters] = useState<Set<string>>(new Set());
   const [sprintBonuses, setSprintBonuses] = useState<Record<string, number>>({});
   const [adjacentCoverCells, setAdjacentCoverCells] = useState<Vector[]>([]);
+  const [hasValidRangedTargets, setHasValidRangedTargets] = useState(false);
 
   // Add this function near the top of your component, after the state declarations
   const isActionDisabled = () => {
     return combatEnded || !isCombatActive;
+  };
+
+  // Add this function near the top of your component, after the state declarations
+  const isFireRangedWeaponDisabled = () => {
+    const currentChar = combatCharacters[currentCharacterIndex];
+    const rangedWeapons = currentChar.weapons.filter(w => w.type === 'Ranged');
+    if (rangedWeapons.length === 0) return true;
+    const validTargets = getValidRangedTargets(currentChar, rangedWeapons[0]);
+    return validTargets.length === 0;
   };
 
   useEffect(() => {
@@ -208,6 +219,20 @@ export function CombatTab({
       setMaxMoveDistance(getMaxMoveDistance(currentChar));
     }
   }, [currentInitiativeOrder, combatCharacters]);
+
+  // Update this useEffect to set hasValidRangedTargets
+  useEffect(() => {
+    if (combatCharacters.length > 0 && gameMap) {
+      const currentChar = combatCharacters[currentCharacterIndex];
+      const rangedWeapons = currentChar.weapons.filter(w => w.type === 'Ranged');
+      if (rangedWeapons.length > 0) {
+        const validTargets = getValidRangedTargets(currentChar, rangedWeapons[0]);
+        setHasValidRangedTargets(validTargets.length > 0);
+      } else {
+        setHasValidRangedTargets(false);
+      }
+    }
+  }, [combatCharacters, currentCharacterIndex, gameMap]);
 
   const calculateInitiativeOrder = (characters: CombatCharacter[]) => {
     const order: { char: CombatCharacter, phase: number }[] = [];
@@ -314,28 +339,52 @@ export function CombatTab({
     );
   };
 
+  // Update this function
+  const isFireWeaponDisabled = () => {
+    return !hasValidRangedTargets || !hasRangedWeapon;
+  };
+
   const handleSimpleActionSelection = (action: SimpleAction, index: number) => {
     if (!hasRangedWeapon && ['CallShot', 'ChangeFireMode', 'FireRangedWeapon', 'ReloadWeapon', 'TakeAim'].includes(action)) {
       return; // Do nothing if the character doesn't have a ranged weapon
     }
 
-    if (action === 'TakeCover') {
-      if (!canUseTakeCover) {
-        toast.error("No suitable cover available.");
+    if (action === 'FireRangedWeapon') {
+      if (isFireWeaponDisabled()) {
+        toast.error("No valid targets for ranged attack due to hard cover or out of range.");
         return;
       }
-      setSelectedSimpleActions(prev => {
-        const newActions = [...prev];
-        if (newActions[index] === 'TakeCover') {
-          newActions[index] = null;
+      const currentChar = combatCharacters[currentCharacterIndex];
+      const rangedWeapons = currentChar.weapons.filter(w => w.type === 'Ranged');
+      
+      if (rangedWeapons.length > 0) {
+        const validTargets = getValidRangedTargets(currentChar, rangedWeapons[0]);
+        if (validTargets.length > 0) {
+          setSelectedSimpleActions(prev => {
+            const newActions = [...prev];
+            newActions[index] = action;
+            return newActions;
+          });
+          setSelectedWeapons(prev => {
+            const newWeapons = [...prev];
+            newWeapons[index] = rangedWeapons[0];
+            return newWeapons;
+          });
+          setSelectedTargets(prev => {
+            const newTargets = [...prev];
+            newTargets[index] = validTargets[0].id;
+            return newTargets;
+          });
         } else {
-          newActions[index] = 'TakeCover';
-          // Deactivate Take Cover for the other Simple Action
-          newActions[1 - index] = newActions[1 - index] === 'TakeCover' ? null : newActions[1 - index];
+          toast.error("No valid targets for ranged attack due to hard cover or out of range.");
+          return;
         }
-        return newActions;
-      });
+      } else {
+        toast.error("No ranged weapons available.");
+        return;
+      }
     } else {
+      // Handle other action selections
       setSelectedSimpleActions(prev => {
         const newActions = [...prev];
         if (newActions[index] === action) {
@@ -343,61 +392,62 @@ export function CombatTab({
         } else {
           newActions[index] = action;
         }
-
-        // Set selectedActionType to 'Simple' if any action is selected
-        if (newActions.some(a => a !== null)) {
-          setSelectedActionType('Simple');
-        } else {
-          setSelectedActionType(null);
-        }
-
         return newActions;
       });
+    }
 
-      setSelectedComplexAction(null);
+    // Set selectedActionType to 'Simple' if any action is selected
+    if (selectedSimpleActions.some(a => a !== null)) {
+      setSelectedActionType('Simple');
+    } else {
+      setSelectedActionType(null);
+    }
 
-      if (selectedSimpleActions[index] === action) {
-        // Deselecting, so clear weapon and target
-        setSelectedWeapons(prev => {
-          const newWeapons = [...prev];
-          newWeapons[index] = null;
-          return newWeapons;
-        });
-        setSelectedTargets(prev => {
-          const newTargets = [...prev];
-          newTargets[index] = null;
-          return newTargets;
-        });
-      } else {
-        // Selecting, so set default weapon and target
-        const currentChar = combatCharacters[currentCharacterIndex];
-        let defaultWeapon = null;
-        let defaultTarget = null;
+    setSelectedComplexAction(null);
 
-        if (action === 'FireRangedWeapon') {
-          defaultWeapon = currentChar.weapons.find(w => w.type === 'Ranged') || null;
-          defaultTarget = combatCharacters.find(c => c.faction !== currentChar.faction && c.is_conscious)?.id || null;
-        } else if (action === 'ReloadWeapon' || action === 'ChangeFireMode') {
-          defaultWeapon = currentChar.weapons.find(w => w.type === 'Ranged') || null;
-        }
+    if (selectedSimpleActions[index] === action) {
+      // Deselecting, so clear weapon and target
+      setSelectedWeapons(prev => {
+        const newWeapons = [...prev];
+        newWeapons[index] = null;
+        return newWeapons;
+      });
+      setSelectedTargets(prev => {
+        const newTargets = [...prev];
+        newTargets[index] = null;
+        return newTargets;
+      });
+    } else {
+      // Selecting, so set default weapon and target
+      const currentChar = combatCharacters[currentCharacterIndex];
+      let defaultWeapon = null;
+      let defaultTarget = null;
 
-        setSelectedWeapons(prev => {
-          const newWeapons = [...prev];
-          newWeapons[index] = defaultWeapon;
-          return newWeapons;
-        });
-        setSelectedTargets(prev => {
-          const newTargets = [...prev];
-          newTargets[index] = defaultTarget;
-          return newTargets;
-        });
+      if (action === 'ReloadWeapon' || action === 'ChangeFireMode') {
+        defaultWeapon = currentChar.weapons.find(w => w.type === 'Ranged') || null;
       }
+
+      setSelectedWeapons(prev => {
+        const newWeapons = [...prev];
+        newWeapons[index] = defaultWeapon;
+        return newWeapons;
+      });
+      setSelectedTargets(prev => {
+        const newTargets = [...prev];
+        newTargets[index] = defaultTarget;
+        return newTargets;
+      });
     }
   };
 
   const handleComplexActionSelection = (action: ComplexAction) => {
     if (action === 'MeleeAttack' && !hasMeleeWeapon) {
       return; // Do nothing if the character doesn't have a melee weapon
+    }
+
+    if (action === 'FireWeapon' && isFireWeaponDisabled()) {
+      toast.error("No valid targets for ranged attack due to hard cover or out of range.");
+      return;
     }
 
     if (action === 'Sprint') {
@@ -915,6 +965,34 @@ export function CombatTab({
     );
   };
 
+  const getValidRangedTargets = (attacker: CombatCharacter, weapon: Weapon): CombatCharacter[] => {
+    if (!gameMap) return []; // Return empty array if gameMap is not initialized
+
+    const opposingFaction = attacker.faction === 'faction1' ? faction2 : faction1;
+    return combatCharacters.filter(target => {
+      if (!opposingFaction.includes(target.id) || !target.is_conscious) {
+        return false;
+      }
+
+      const distance = Math.sqrt(
+        Math.pow(target.position.x - attacker.position.x, 2) +
+        Math.pow(target.position.y - attacker.position.y, 2)
+      );
+
+      const { category } = getRangeCategory(weapon, distance);
+      if (category === 'Out of Range') {
+        return false;
+      }
+
+      const intersectedCells = getIntersectedCells(attacker.position, target.position);
+      const hasFullCover = intersectedCells.some(cell => 
+        gameMap.cells[cell.y * gameMap.width + cell.x] === CellType.HardCover
+      );
+
+      return !hasFullCover;
+    });
+  };
+
   return (
     <>
       <Card>
@@ -1221,6 +1299,7 @@ export function CombatTab({
                                     isActionDisabled() ||
                                     selectedActionType === 'Complex' ||
                                     (!hasRangedWeapon && ['CallShot', 'ChangeFireMode', 'FireRangedWeapon', 'ReloadWeapon', 'TakeAim'].includes(action)) ||
+                                    (action === 'FireRangedWeapon' && !hasValidRangedTargets) ||
                                     (action === 'TakeCover' && !canUseTakeCover)
                                   }
                                 >
@@ -1291,7 +1370,7 @@ export function CombatTab({
                             (selectedActionType === 'Simple' && action !== 'Sprint') ||
                             selectedSimpleActions.some(a => a !== null) ||
                             (action === 'MeleeAttack' && (!hasMeleeWeapon || !hasMeleeTargetsInRange())) ||
-                            (action === 'FireWeapon' && !hasRangedWeapon) ||
+                            (action === 'FireWeapon' && (!hasRangedWeapon || isFireRangedWeaponDisabled())) ||
                             (action === 'Sprint' && sprintingCharacters.has(currentCharacter.id))
                           }
                         >
@@ -1405,7 +1484,7 @@ export function CombatTab({
                     faction2={faction2}
                     deadCharacters={deadCharacters}
                     unconsciousCharacters={unconsciousCharacters}
-                    adjacentCoverCells={adjacentCoverCells} // Add this new prop
+                    adjacentCoverCells={adjacentCoverCells}
                   />
                 </div>
                 {actionLog.length > 0 && (
