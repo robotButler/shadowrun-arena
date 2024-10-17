@@ -373,7 +373,9 @@ export const handleComplexAction = (
   } else if ((selectedComplexAction === 'FireWeapon' || selectedComplexAction === 'MeleeAttack') && selectedWeapon && selectedTargetId) {
     const target = combatCharacters.find(c => c.id === selectedTargetId);
     if (target) {
-      const distance = taxicabDistance(currentChar.position, target.position, gameMap ? gridFromGameMap(gameMap, combatCharacters) : new PF.Grid(0, 0));
+      const distance = taxicabDistance(currentChar.position, target.position, gameMap ?
+        gridFromGameMap(gameMap, combatCharacters) :
+        new PF.Grid(0, 0), true);
       
       if (selectedComplexAction === 'MeleeAttack' && distance > MELEE_RANGE) {
         if (remainingMovement >= distance - MELEE_RANGE) {
@@ -484,7 +486,8 @@ export const handleSimpleActions = (
       const targetId = selectedTargets[index]!;
       const target = combatCharacters.find(c => c.id === targetId);
       if (target) {
-        const distance = taxicabDistance(currentChar.position, target.position, gameMap ? gridFromGameMap(gameMap, combatCharacters) : new PF.Grid(0, 0));
+        const distance = taxicabDistance(currentChar.position, target.position, gameMap ?
+          gridFromGameMap(gameMap, combatCharacters) : new PF.Grid(0, 0), true);
         const runModifier = isRunning ? RUN_OTHER_PENALTY : 0;
         const result = resolve_attack(currentChar, target, weapon, weapon.currentFireMode ?? 'SS', distance, gameMap, runModifier);
         

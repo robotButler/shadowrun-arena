@@ -154,6 +154,7 @@ function get_range_modifier(weapon_type: WeaponType, distance: number): number {
     return -6; // If beyond extreme range, default to -6
 }
 
+
 // Update the resolve_attack function
 function resolve_attack(
   attacker: CombatCharacter,
@@ -182,18 +183,22 @@ function resolve_attack(
 
     if (weapon.type.toLowerCase() === 'melee') {
         // Melee attack
+
         const base_pool = attacker.attributes.agility + (attacker.skills['close combat'] || 0);
-        const reach_modifier = (weapon?.reach ?? 0) - 0;
-        const wound_modifier = calculate_wound_modifier(attacker);
         
-        // Add running target modifier
+        // Calculate Reach advantage
+        const attacker_reach = (weapon.reach || 1) + (attacker.metatype === 'Troll' ? 1 : 0);
+        const defender_reach = defender.weapons.reduce((max, w) => Math.max(max, w.reach || 0), 0) + (defender.metatype === 'Troll' ? 1 : 0);
+        const reach_advantage = attacker_reach - defender_reach;
+        
+        const wound_modifier = calculate_wound_modifier(attacker);
         const running_target_modifier = defender.isRunning ? -2 : 0;
         
-        const modifiers = reach_modifier - wound_modifier + attacker.situational_modifiers + running_target_modifier + runModifier;
+        const modifiers = reach_advantage - wound_modifier + attacker.situational_modifiers + running_target_modifier + runModifier;
         const total_attack_pool = Math.max(base_pool + modifiers, 1);
         
         let modifierBreakdown = [`Base pool (${base_pool})`];
-        if (reach_modifier !== 0) modifierBreakdown.push(`Reach modifier (${reach_modifier})`);
+        if (reach_advantage !== 0) modifierBreakdown.push(`Reach advantage (${reach_advantage})`);
         if (wound_modifier !== 0) modifierBreakdown.push(`Wound modifier (-${wound_modifier})`);
         if (attacker.situational_modifiers !== 0) modifierBreakdown.push(`Situational modifiers (${attacker.situational_modifiers})`);
         if (running_target_modifier !== 0) modifierBreakdown.push(`Running target modifier (${running_target_modifier})`);
@@ -232,10 +237,10 @@ function resolve_attack(
         // Defender's defense test
         const base_defense_pool = defender.attributes.reaction + defender.attributes.intuition;
         const defender_wound_modifier = calculate_wound_modifier(defender);
-        const total_defense_pool = Math.max(base_defense_pool - reach_modifier - defender_wound_modifier + defender.situational_modifiers, 1);
+        const total_defense_pool = Math.max(base_defense_pool - reach_advantage - defender_wound_modifier + defender.situational_modifiers, 1);
         
         let defenseModifierBreakdown = [`Base pool (${base_defense_pool})`];
-        if (reach_modifier !== 0) defenseModifierBreakdown.push(`Reach modifier (-${reach_modifier})`);
+        if (reach_advantage !== 0) defenseModifierBreakdown.push(`Reach advantage (-${reach_advantage})`);
         if (defender_wound_modifier !== 0) defenseModifierBreakdown.push(`Wound modifier (-${defender_wound_modifier})`);
         if (defender.situational_modifiers !== 0) defenseModifierBreakdown.push(`Situational modifiers (${defender.situational_modifiers})`);
         
@@ -529,6 +534,20 @@ function get_ideal_range(weapon_type: string): number {
     // Ideal range is the middle of the 'Short' range category
     const short_range = ranges[0][0];
     return short_range / 2;
+}
+
+// Update the calculateMeleeRange function
+export function calculateMeleeRange(attacker: CombatCharacter, weapon: Weapon | null): number {
+  const weaponReach = weapon?.reach || 1;
+  const trollBonus = attacker.metatype === 'Troll' ? 1 : 0;
+  const totalRange = weaponReach + trollBonus;
+
+  console.log(`Calculating melee range for ${attacker.name}`);
+  console.log(`Weapon reach: ${weaponReach}`);
+  console.log(`Troll bonus: ${trollBonus}`);
+  console.log(`Total melee range: ${totalRange}`);
+
+  return totalRange;
 }
 
 // Add these export statements at the end of the file

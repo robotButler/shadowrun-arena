@@ -39,6 +39,7 @@ import * as Tooltip from '@radix-ui/react-tooltip';
 import { rollSprinting, getSprintingDistance } from '@/lib/combatSimulation'
 import * as PF from 'pathfinding';
 import { getRangeCategory } from '../lib/combat';
+import { calculateMeleeRange } from '../lib/combat';
 
 const WeaponStatsCard = ({ character }: { character: CombatCharacter }) => (
   <Card className="mt-4">
@@ -330,12 +331,13 @@ export function CombatTab({
   const hasRangedWeapon = currentCharacter?.weapons.some(w => w.type === 'Ranged');
 
   // Add this function to check if there are melee targets in range
-  const hasMeleeTargetsInRange = () => {
+  const hasMeleeTargetsInRange = (weapon: Weapon | null) => {
     const currentChar = combatCharacters[currentCharacterIndex];
     return combatCharacters.some(c => 
       c.faction !== currentChar.faction && 
       c.is_conscious &&
-      taxicabDistance(currentChar.position, c.position, gameMap ? gridFromGameMap(gameMap, combatCharacters) : new PF.Grid(0, 0)) <= 2
+      taxicabDistance(currentChar.position, c.position, gameMap ?
+        gridFromGameMap(gameMap, combatCharacters) : new PF.Grid(0, 0), true) <= calculateMeleeRange(currentChar, weapon)
     );
   };
 
@@ -477,7 +479,10 @@ export function CombatTab({
           const meleeTargets = combatCharacters.filter(c => 
             c.faction !== currentChar.faction && 
             c.is_conscious &&
-            taxicabDistance(currentChar.position, c.position, gameMap ? gridFromGameMap(gameMap, combatCharacters) : new PF.Grid(0, 0)) <= 2
+            taxicabDistance(currentChar.position, c.position, gameMap ?
+              gridFromGameMap(gameMap, combatCharacters) :
+              new PF.Grid(0, 0), true)
+                <= calculateMeleeRange(currentChar, selectedWeapons[0])
           );
           defaultTarget = meleeTargets.length > 0 ? meleeTargets[0].id : null;
           
@@ -512,7 +517,10 @@ export function CombatTab({
     if (selectedComplexAction === 'MeleeAttack') {
       const attacker = combatCharacters[currentCharacterIndex];
       const target = combatCharacters.find(c => c.id === targetId);
-      if (target && taxicabDistance(attacker.position, target.position, gameMap ? gridFromGameMap(gameMap, combatCharacters) : new PF.Grid(0, 0)) > 2) {
+      if (target && taxicabDistance(attacker.position, target.position, gameMap ?
+        gridFromGameMap(gameMap, combatCharacters) :
+        new PF.Grid(0, 0), true)
+          > calculateMeleeRange(attacker, selectedWeapons[index])) {
         setMeleeRangeError("Selected target is not within melee range.");
       } else {
         setMeleeRangeError(null);
@@ -955,14 +963,34 @@ export function CombatTab({
     );
   });
 
-  // Add this function to get melee targets in range
+  // Update the getMeleeTargetsInRange function
   const getMeleeTargetsInRange = () => {
     const currentChar = combatCharacters[currentCharacterIndex];
-    return combatCharacters.filter(c => 
-      c.faction !== currentChar.faction && 
-      c.is_conscious &&
-      taxicabDistance(currentChar.position, c.position, gameMap ? gridFromGameMap(gameMap, combatCharacters) : new PF.Grid(0, 0)) <= 2
-    );
+    const currentWeapon = selectedWeapons[0] as Weapon | null;
+    const meleeRange = calculateMeleeRange(currentChar, currentWeapon);
+
+    console.log(`Calculating melee targets for ${currentChar.name}`);
+    console.log(`Current weapon: ${currentWeapon ? currentWeapon.name : 'None'}`);
+    console.log(`Calculated melee range: ${meleeRange}`);
+
+    const targets = combatCharacters.filter(c => {
+      if (c.faction === currentChar.faction || !c.is_conscious) {
+        return false;
+      }
+
+      const distance = taxicabDistance(currentChar.position, c.position, gameMap ?
+        gridFromGameMap(gameMap, combatCharacters) :
+        new PF.Grid(0, 0), true);
+      console.log(`Distance to ${c.name}: ${distance}`);
+
+      const inRange = distance <= meleeRange;
+      console.log(`${c.name} is ${inRange ? 'in' : 'out of'} range`);
+
+      return inRange;
+    });
+
+    console.log(`Melee targets in range: ${targets.map(t => t.name).join(', ')}`);
+    return targets;
   };
 
   const getValidRangedTargets = (attacker: CombatCharacter, weapon: Weapon): CombatCharacter[] => {
@@ -1373,7 +1401,7 @@ export function CombatTab({
                             isActionDisabled() ||
                             (selectedActionType === 'Simple' && action !== 'Sprint') ||
                             selectedSimpleActions.some(a => a !== null) ||
-                            (action === 'MeleeAttack' && (!hasMeleeWeapon || !hasMeleeTargetsInRange())) ||
+                            (action === 'MeleeAttack' && (!hasMeleeWeapon || !hasMeleeTargetsInRange(selectedWeapons[0]))) ||
                             (action === 'FireWeapon' && (!hasRangedWeapon || isFireRangedWeaponDisabled())) ||
                             (action === 'Sprint' && sprintingCharacters.has(currentCharacter.id))
                           }
@@ -1395,6 +1423,10 @@ export function CombatTab({
                                     key={i}
                                     variant={selectedWeapons[0] === weapon ? 'default' : 'outline'}
                                     onClick={() => handleWeaponSelection(weapon, 0)}
+                                    disabled={
+                                      (selectedComplexAction === 'FireWeapon' && !getValidRangedTargets(combatCharacters[currentCharacterIndex], weapon).length) ||
+                                      (selectedComplexAction === 'MeleeAttack' && !getMeleeTargetsInRange(weapon).length)
+                                    }
                                     className="w-full"
                                   >
                                     {weapon.name}
@@ -1412,7 +1444,11 @@ export function CombatTab({
                                   variant={selectedTargets[0] === target.id ? 'default' : 'outline'}
                                   onClick={() => handleTargetSelection(target.id, 0)}
                                   className="w-full"
-                                  disabled={selectedWeapons[0] != null && !getValidRangedTargets(combatCharacters[currentCharacterIndex], selectedWeapons[0] as Weapon).includes(target)}
+                                  disabled={
+                                    (selectedComplexAction === 'FireWeapon' && selectedWeapons[0] != null &&
+                                      !getValidRangedTargets(combatCharacters[currentCharacterIndex], selectedWeapons[0] as Weapon).includes(target)) ||
+                                    (selectedComplexAction === 'MeleeAttack' && !getMeleeTargetsInRange().includes(target))
+                                  }
                                 >
                                   {target.name}
                                 </Button>

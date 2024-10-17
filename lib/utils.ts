@@ -30,10 +30,25 @@ export const isCharacterConscious = (stunDamage: number, maxStunHealth: number, 
  * @param position2 The second position
  * @returns The distance between the two positions
  */
-export const taxicabDistance = (pos1: Vector, pos2: Vector, grid: PF.Grid): number => {
+export const taxicabDistance = (pos1: Vector, pos2: Vector, grid: PF.Grid, ignorePos2Walkability: boolean = false): number => {
+  console.log("grid ", grid);
   const finder = new PF.AStarFinder();
-  const path = finder.findPath(pos1.x, pos1.y, pos2.x, pos2.y, grid);
-  return path.length - 1;
+  const newgrid = grid.clone();
+  if (ignorePos2Walkability) {
+    newgrid.setWalkableAt(pos2.x, pos2.y, true);
+  }
+  const path = finder.findPath(Math.round(pos1.x), Math.round(pos1.y), Math.round(pos2.x), Math.round(pos2.y), newgrid);
+  
+  if (path.length === 0) {
+    console.log(`No path found from (${pos1.x}, ${pos1.y}) to (${pos2.x}, ${pos2.y})`);
+    return -1
+  }
+  
+  const distance = path.length - 1;
+  console.log(`Calculating distance from (${pos1.x}, ${pos1.y}) to (${pos2.x}, ${pos2.y})`);
+  console.log(`Path length: ${path.length}, Distance: ${distance}`);
+  
+  return distance;
 };
 
 export function calculatePhysicalLimit(strength: number, body: number, reaction: number): number {
