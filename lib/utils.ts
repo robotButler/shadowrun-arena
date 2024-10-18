@@ -31,7 +31,6 @@ export const isCharacterConscious = (stunDamage: number, maxStunHealth: number, 
  * @returns The distance between the two positions
  */
 export const taxicabDistance = (pos1: Vector, pos2: Vector, grid: PF.Grid, ignorePos2Walkability: boolean = false): number => {
-  console.log("grid ", grid);
   const finder = new PF.AStarFinder();
   const newgrid = grid.clone();
   if (ignorePos2Walkability) {
